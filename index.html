@@ -3796,6 +3796,9 @@ function nextHigh(from){ const T=tideEvents(); if(!T) return null; const e=T.ev.
 const hm=ts=>{ const d=new Date(ts); return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0'); };
 const md=ts=>{ const d=new Date(ts); return (d.getMonth()+1)+'/'+d.getDate(); };
 function tideText(){ const nowT=LIVE_T0?LIVE_T0.getTime()+NOWI()*DT*60000:Date.now(); const e=nextHigh(nowT-30*60000); if(!e) return ''; return `下一次滿潮 ${md(e.t)} ${hm(e.t)}（${esc(e.name)}，潮高 ${e.h!=null?'+'+e.h.toFixed(2)+' m':'–'}${e.range?'，'+e.range+'潮':''}，中央氣象署潮汐預報）`; }
+// 氣象署海象觀測：臺中港潮位站最新潮高、臺中浮標最新浪高（中繼站 /tide.json 的 obs）
+function tideObs(){ const out={}; const obs=(LIVE.tide&&LIVE.tide.obs)||[]; const last=(loc,key)=>{ const a=((loc.StationObsTimes||{}).StationObsTime)||[]; for(let i=a.length-1;i>=0;i--){ const w=a[i].WeatherElements||{}; const v=parseFloat(w[key]); if(Number.isFinite(v)) return {v,t:Date.parse(a[i].DateTime),lv:w.TideLevel}; } return null; };
+  obs.forEach(l=>{ const n=(l._meta||{}).name||''; if(/臺中港/.test(n)) out.tide=last(l,'TideHeight'); if(/浮標/.test(n)) out.wave=last(l,'WaveHeight'); }); return out; }
 // 颱風：最新定位與距龍井距離
 function typhoons(){ const tc=LIVE.warn&&LIVE.warn.typhoon&&LIVE.warn.typhoon.TropicalCyclones&&LIVE.warn.typhoon.TropicalCyclones.TropicalCyclone; const arr=Array.isArray(tc)?tc:tc?[tc]:[];
   return arr.map(t=>{ const fx=((t.AnalysisData&&t.AnalysisData.Fix)||[]).slice(-1)[0]||{}; const lon=parseFloat(fx.CoordinateLongitude), lat=parseFloat(fx.CoordinateLatitude);
@@ -3806,6 +3809,8 @@ const _startLiveT=startLive; startLive=async function(){ await _startLiveT(); if
 const _renderLiveT=renderLive; renderLive=function(){ _renderLiveT(); const k=$('#nowK'); if(!k) return; const e=nextHigh(Date.now()), ty=typhoons().filter(t=>t.km!=null).sort((a,b)=>a.km-b.km)[0], w=activeWarns();
   if(e) k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v">${hm(e.t)}<span style="font-size:13px"> ${e.h!=null?'+'+e.h.toFixed(2)+' m':''}</span></div><div class="l">下一次滿潮（${md(e.t)}，${esc(e.name)}${e.range?'，'+esc(e.range)+'潮':''}）</div></div>`);
   k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v ${w.length?'badc':'okc'}">${w.length?esc(w[0].headline):'無'}</div><div class="l">臺中市有效的豪大雨特報${w.length>1?`（共 ${w.length} 則）`:''}</div></div>`);
+  const ob=tideObs(); if(ob.tide) k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v">${ob.tide.v>0?'+':''}${ob.tide.v.toFixed(2)}<span style="font-size:13px"> m</span></div><div class="l">臺中港實測潮位（${hm(ob.tide.t)}${ob.tide.lv&&ob.tide.lv!=='-'?'，'+esc(ob.tide.lv):''}）</div></div>`);
+  if(ob.wave) k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v">${ob.wave.v.toFixed(1)}<span style="font-size:13px"> m</span></div><div class="l">臺中浮標浪高（${hm(ob.wave.t)}）</div></div>`);
   if(ty) k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v ${ty.km<800?'badc':''}">${esc(ty.name)}</div><div class="l">颱風最新位置距龍井約 ${Math.round(ty.km).toLocaleString()} 公里</div></div>`); };
 const _drawPlainT=drawPlain; drawPlain=function(){ _drawPlainT(); if(ROLE==='citizen'||!S.live) return; const t=tideText(), w=activeWarns(); if(t||w.length) $('#plain').insertAdjacentHTML('beforeend',`<p>${w.length?`<b style="color:var(--warn)">${esc(w[0].headline)}</b>（中央氣象署）。`:''}${t}${t?'。':''}</p>`); };
 
