@@ -3797,7 +3797,7 @@ const hm=ts=>{ const d=new Date(ts); return String(d.getHours()).padStart(2,'0')
 const md=ts=>{ const d=new Date(ts); return (d.getMonth()+1)+'/'+d.getDate(); };
 function tideText(){ const nowT=LIVE_T0?LIVE_T0.getTime()+NOWI()*DT*60000:Date.now(); const e=nextHigh(nowT-30*60000); if(!e) return ''; return `下一次滿潮 ${md(e.t)} ${hm(e.t)}（${esc(e.name)}，潮高 ${e.h!=null?'+'+e.h.toFixed(2)+' m':'–'}${e.range?'，'+e.range+'潮':''}，中央氣象署潮汐預報）`; }
 // 氣象署海象觀測：臺中港潮位站最新潮高、臺中浮標最新浪高（中繼站 /tide.json 的 obs）
-function tideObs(){ const out={}; const obs=(LIVE.tide&&LIVE.tide.obs)||[]; const last=(loc,key)=>{ const a=((loc.StationObsTimes||{}).StationObsTime)||[]; for(let i=a.length-1;i>=0;i--){ const w=a[i].WeatherElements||{}; const v=parseFloat(w[key]); if(Number.isFinite(v)) return {v,t:Date.parse(a[i].DateTime),lv:w.TideLevel}; } return null; };
+function tideObs(){ const out={}; const obs=(LIVE.tide&&LIVE.tide.obs)||[]; const last=(loc,key)=>{ const a=((loc.StationObsTimes||{}).StationObsTime)||[]; let best=null; a.forEach(x=>{ const w=x.WeatherElements||{}, v=parseFloat(w[key]), t=Date.parse(x.DateTime); if(Number.isFinite(v)&&Number.isFinite(t)&&(!best||t>best.t)) best={v,t,lv:w.TideLevel}; }); return best; }; // 氣象署的時間序列沒有排序，取最新一筆
   obs.forEach(l=>{ const n=(l._meta||{}).name||''; if(/臺中港/.test(n)) out.tide=last(l,'TideHeight'); if(/浮標/.test(n)) out.wave=last(l,'WaveHeight'); }); return out; }
 // 颱風：最新定位與距龍井距離
 function typhoons(){ const tc=LIVE.warn&&LIVE.warn.typhoon&&LIVE.warn.typhoon.TropicalCyclones&&LIVE.warn.typhoon.TropicalCyclones.TropicalCyclone; const arr=Array.isArray(tc)?tc:tc?[tc]:[];
