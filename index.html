@@ -1447,7 +1447,7 @@ input[type=datetime-local]{width:100%;min-width:0;font:inherit;font-size:13px;pa
   <div class="acts" style="margin-top:10px"><button class="btn sm" type="button" id="altNew">＋ 新增方案</button><button class="btn sm ghost" type="button" id="altExport">匯出方案檔</button><label class="btn sm ghost" id="altImportLab" style="cursor:pointer">匯入方案檔<input type="file" id="altImport" accept=".json,application/json" hidden></label></div>
   <div id="altImpMsg" style="font-size:12px;margin-top:6px"></div>
   <div id="altEdit" class="alt-edit" hidden></div>
-  <p class="muted" style="font-size:11.5px;margin:8px 0 0">方案存在這台裝置的瀏覽器；要給同事，按「匯出方案檔」再請對方匯入。只有承辦人員可以新增與編輯。</p>
+  <p class="muted" style="font-size:11.5px;margin:8px 0 0" id="altSyncNote"></p>
 </div>
 </section>
 
@@ -3873,8 +3873,9 @@ function renderAltList(){ const box=$('#altList'); if(!box) return;
     : '<p class="muted" style="font-size:12.5px;margin:0">目前沒有自訂方案。</p>';
   box.querySelectorAll('[data-alt-apply]').forEach(b=>b.addEventListener('click',()=>{ setAlt(S.alt===b.dataset.altApply?null:b.dataset.altApply); }));
   box.querySelectorAll('[data-alt-edit]').forEach(b=>b.addEventListener('click',()=>{ const a=ALTS.find(x=>x.id===b.dataset.altEdit); if(a){ ALTEDIT=JSON.parse(JSON.stringify(a)); renderAltEdit(); } }));
-  box.querySelectorAll('[data-alt-del]').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.arm!=='1'){ b.dataset.arm='1'; b.textContent='再按一次確認刪除'; setTimeout(()=>{ b.dataset.arm=''; b.textContent='刪除'; },3000); return; } ALTS=ALTS.filter(x=>x.id!==b.dataset.altDel); saveAlts(); refreshAltApplied(); syncCtl(); run(false); }));
+  box.querySelectorAll('[data-alt-del]').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.arm!=='1'){ b.dataset.arm='1'; b.textContent='再按一次確認刪除'; setTimeout(()=>{ b.dataset.arm=''; b.textContent='刪除'; },3000); return; } ALTS=ALTS.filter(x=>x.id!==b.dataset.altDel); saveAlts(); syncOp({k:'alt-del',id:b.dataset.altDel}); refreshAltApplied(); syncCtl(); run(false); }));
   ['#altNew','#altExport','#altImportLab'].forEach(s=>{ const e=$(s); if(e) e.hidden=!canEditAlt(); });
+  const sn=$('#altSyncNote'); if(sn) sn.textContent= relayBase()&&ROLE!=='citizen'? '方案存在中繼站：承辦人員儲存後，所有登入的承辦、主管、里長打開都看得到同一份（每 15 秒更新）。只有承辦人員可以新增、編輯、刪除。一般民眾看不到方案。' : '目前沒有連上中繼站，方案只存在這台裝置；要給同事，按「匯出方案檔」再請對方匯入。只有承辦人員可以新增與編輯。';
 }
 function trunkOpts(sel){ return TRUNKS.slice().sort((a,b)=>a.v.localeCompare(b.v,'zh-Hant')).map(t=>`<option value="${esc(t.id)}"${t.id===sel?' selected':''}>${esc(t.id)} 幹線（${esc(t.v)}）</option>`).join(''); }
 function rowHint(r){ const t=TBY[r.tr]; if(!t) return ''; if(!Q5REF) calcRef(); const now=Q5REF[t.id]*capRatio0(t), rep=Q5REF[t.id]*Math.max(capRatio0(t),1.25), c=manning(r), q5=q5of(t,+r.A);
@@ -3903,14 +3904,24 @@ function renderAltEdit(){ const box=$('#altEdit'); if(!box) return; const a=ALTE
   $('#altSave').addEventListener('click',()=>{ rd(); if(!a.name){ $('#altMsg').innerHTML='<span class="badc">請填方案名稱。</span>'; return; } if(ALTS.some(x=>x.name===a.name&&x.id!==a.id)){ $('#altMsg').innerHTML='<span class="badc">已有同名方案。</span>'; return; }
     const bad=(a.rows||[]).find(r=>['A','d','w','h','slope','pump','det'].some(k=>r[k]!==''&&r[k]!=null&&!(+r[k]>=0)));
     if(bad){ $('#altMsg').innerHTML='<span class="badc">數字欄位不能是負數。</span>'; return; }
-    const i=ALTS.findIndex(x=>x.id===a.id); if(i>=0) ALTS[i]=a; else ALTS.push(a); saveAlts(); ALTEDIT=null; renderAltEdit(); setAlt(a.id); });
+    a.by=ROLE_NAME[ROLE]+'·'+DEVID.slice(-4); const i=ALTS.findIndex(x=>x.id===a.id); if(i>=0) ALTS[i]=a; else ALTS.push(a); saveAlts(); syncOp({k:'alt-put',a}); ALTEDIT=null; renderAltEdit(); setAlt(a.id); });
 }
 $('#altNew').addEventListener('click',()=>{ ALTEDIT={id:'alt'+Date.now().toString(36),name:'方案 '+String.fromCharCode(65+ALTS.length%26),base:3,note:'',rows:[{tr:'忠',slope:1}]}; renderAltEdit(); const e=$('#altEdit'); if(e) e.scrollIntoView({block:'nearest'}); });
 $('#altExport').addEventListener('click',e=>{ if(!ALTS.length) return; saveFile(e.currentTarget,`龍井_自訂改善方案_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`,JSON.stringify({kind:'longjing-alts',v:1,at:new Date().toISOString(),alts:ALTS},null,1),'application/json'); });
 $('#altImport').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(String(rd.result)); const list=Array.isArray(j)?j:j.alts; if(!Array.isArray(list)) throw new Error('不是方案檔');
-    let n=0; list.forEach(a=>{ if(!a||!a.name||!Array.isArray(a.rows)) return; const c={id:'alt'+Date.now().toString(36)+n,name:String(a.name).slice(0,20),base:Math.max(0,Math.min(3,a.base|0)),note:String(a.note||'').slice(0,80),rows:a.rows.filter(r=>r&&TBY[r.tr]).slice(0,30)}; while(ALTS.some(x=>x.name===c.name)) c.name=c.name.slice(0,17)+'（匯入）'; ALTS.push(c); n++; });
+    let n=0; list.forEach(a=>{ if(!a||!a.name||!Array.isArray(a.rows)) return; const c={id:'alt'+Date.now().toString(36)+n,name:String(a.name).slice(0,20),base:Math.max(0,Math.min(3,a.base|0)),note:String(a.note||'').slice(0,80),rows:a.rows.filter(r=>r&&TBY[r.tr]).slice(0,30)}; while(ALTS.some(x=>x.name===c.name)) c.name=c.name.slice(0,17)+'（匯入）'; c.by=ROLE_NAME[ROLE]+'·'+DEVID.slice(-4); ALTS.push(c); syncOp({k:'alt-put',a:c}); n++; });
     saveAlts(); syncCtl(); renderPhase(); $('#altImpMsg').innerHTML=`<span class="okc">已匯入 ${n} 個方案。</span>`; }catch(err){ $('#altImpMsg').innerHTML=`<span class="badc">讀不懂這個檔案：${esc(err.message)}</span>`; } e.target.value=''; }; rd.readAsText(f); });
 const _applyRoleA=applyRole; applyRole=function(r){ _applyRoleA(r); if(typeof renderAltList==='function') renderAltList(); };
+// 中繼站同步：伺服器的方案為準，再疊上還沒上傳成功的本機操作；第一次連上時，把本機舊方案補傳
+const altSig=list=>JSON.stringify(list.map(({at,...a})=>a));
+function mergeAlts(server){
+  if(ROLE==='staff'&&relayBase()) ALTS.filter(a=>!a.at&&!server.some(x=>x.id===a.id)&&!SYNC.q.some(o=>o.k==='alt-put'&&o.a&&o.a.id===a.id)).forEach(a=>syncOp({k:'alt-put',a}));
+  let next=server.map(a=>Object.assign({},a));
+  SYNC.q.forEach(o=>{ if(o.k==='alt-put'&&o.a){ const i=next.findIndex(x=>x.id===o.a.id); if(i>=0) next[i]=o.a; else next.push(o.a); } if(o.k==='alt-del') next=next.filter(x=>x.id!==o.id); });
+  const changed=altSig(next)!==altSig(ALTS); ALTS=next; saveAlts();
+  if(changed){ const was=S.alt; refreshAltApplied(); syncCtl(); if(isOpen('phase')) renderPhase(); if(was) run(false); }
+}
+const _applyStateA=applyState; applyState=function(j){ _applyStateA(j); if(j&&Array.isArray(j.alts)) mergeAlts(j.alts); };
 refreshAltApplied();
 
 })();
