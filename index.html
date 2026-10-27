@@ -1184,6 +1184,7 @@ input[type=datetime-local]{width:100%;min-width:0;font:inherit;font-size:13px;pa
 @media (max-height:760px){ .legend .lg-sym{display:none} }
 #phase .two{grid-template-columns:minmax(0,1fr)}
 #phase td:first-child{white-space:nowrap}
+.combo-pick{display:flex;flex-wrap:wrap;gap:10px}.combo-p{display:flex;flex-direction:column;gap:3px;font-size:12.5px;flex:1 1 150px;min-width:0}.combo-p select{width:100%}
 .alt-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--surface2)}
 .alt-edit{border:1px solid var(--accent);border-radius:14px;padding:12px;margin-top:10px}
 .alt-row{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;background:var(--surface2)}
@@ -1437,7 +1438,7 @@ input[type=datetime-local]{width:100%;min-width:0;font:inherit;font-size:13px;pa
   </div>
 </div>
 <div class="card" style="margin-top:12px" id="altCmpBox">
-  <h2>自訂方案 vs 報告全部完成</h2>
+  <h2>採用的設計組合 vs 報告（逐期比較）</h2>
   <div id="altCmp"></div>
 </div>
 <div class="card" style="margin-top:12px" id="phResidBox">
@@ -1445,10 +1446,10 @@ input[type=datetime-local]{width:100%;min-width:0;font:inherit;font-size:13px;pa
   <div id="phResid" class="prose"></div>
 </div>
 <div class="card" style="margin-top:12px" id="altBox">
-  <h2>自訂改善方案（本團隊方案，非報告內容）</h2>
-  <p class="muted" style="font-size:12.5px;margin:0 0 10px">報告的一、二、三期保持原樣當對照組。實際設計若改了管徑、路線、抽水站或滯洪池，在這裡新增方案：選一個報告階段當基礎，再列出改動的幹線。存好後會出現在上方比較表、分期圖，以及「情境」面板的工程進度按鈕。</p>
+  <h2>本團隊各期設計（非報告內容）</h2>
+  <p class="muted" style="font-size:12.5px;margin:0 0 10px">報告的一、二、三期保持原樣當對照組。每一個設計屬於某一期：例如一期設計只列一期要改做的幹線，沒列的照報告一期。上方「採用的設計組合」為每一期選報告或一個設計，平台再逐期疊起來算：一期用本團隊設計、二三期照報告；之後二期設計好了，就變成一期設計＋二期設計＋報告三期。</p>
   <div id="altList"></div>
-  <div class="acts" style="margin-top:10px"><button class="btn sm" type="button" id="altNew">＋ 新增方案</button><button class="btn sm ghost" type="button" id="altExport">匯出方案檔</button><label class="btn sm ghost" id="altImportLab" style="cursor:pointer">匯入方案檔<input type="file" id="altImport" accept=".json,application/json" hidden></label></div>
+  <div class="acts" style="margin-top:10px"><button class="btn sm" type="button" id="altNew">＋ 新增設計</button><button class="btn sm ghost" type="button" id="altExport">匯出設計檔</button><label class="btn sm ghost" id="altImportLab" style="cursor:pointer">匯入設計檔<input type="file" id="altImport" accept=".json,application/json" hidden></label></div>
   <div id="altImpMsg" style="font-size:12px;margin-top:6px"></div>
   <div id="altEdit" class="alt-edit" hidden></div>
   <p class="muted" style="font-size:11.5px;margin:8px 0 0" id="altSyncNote"></p>
@@ -3895,68 +3896,100 @@ function manning(m){ const n=0.013, S0=(+m.slope>0?+m.slope:1)/1000; let A=0,R=0
 function q5of(t,A){ const r=rainSeries({P:74.51,D:3,bg:0,tp:4}); return Math.max(...routed(Object.assign({},t,{A:A>0?A:t.A}),r,t.C,1)); }
 function resolveAlt(a){ const mods={}; (a.rows||[]).forEach(r=>{ const t=TBY[r.tr]; if(!t) return; const m=mods[t.id]||{};
   if(+r.A>0) m.A=+r.A; const c=manning(r); if(c>0) m.cap=c; if(r.pump!==''&&r.pump!=null&&Number.isFinite(+r.pump)) m.pump=+r.pump; if(+r.det>0) m.det=+r.det; mods[t.id]=m; }); return mods; }
-function altCost(a){ return STAGE_CUM[a.base|0]+(a.rows||[]).reduce((s,r)=>s+(Number.isFinite(+r.cost)?+r.cost:0),0); }
-function stageName(){ const a=S.alt&&ALTS.find(x=>x.id===S.alt); return a? `自訂方案「${a.name}」（以報告${BASE_NAME[a.base|0]}為基礎）` : '報告'+BASE_NAME[S.stage|0]; }
-function setAlt(id){ const a=id&&ALTS.find(x=>x.id===id); if(a){ S.alt=a.id; S.altMods=resolveAlt(a); S.stage=a.base|0; } else { S.alt=null; S.altMods=null; } syncCtl(); run(false); }
-// 情境面板的「改善工程做到哪」：報告四個階段後面接自訂方案
-function renderStageAlts(){ const seg=$('#stageSeg'); if(!seg) return; seg.querySelectorAll('[data-alt]').forEach(b=>b.remove());
-  ALTS.forEach(a=>{ const b=document.createElement('button'); b.type='button'; b.dataset.alt=a.id; b.textContent=a.name; b.title='自訂方案（非報告內容）'; b.addEventListener('click',()=>setAlt(a.id)); seg.appendChild(b); });
-  seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.alt? b.dataset.alt===S.alt : (!S.alt&&+b.dataset.v===S.stage)))); }
-$('#stageSeg').addEventListener('click',e=>{ if(e.target.closest('button[data-v]')){ S.alt=null; S.altMods=null; } },true);
+// 設計屬於某一期（a.base＝1、2、3）：取代報告該期在所列幹線的做法，沒列的幹線照報告該期施作。
+// 「採用的設計組合」COMBO：每一期選報告原計畫或一個本團隊設計；第 k 期完成＝第 1～k 期各自採用的做法疊起來（後期改同一條幹線時以後期為準）。
+const PH_NAME=['','一期','二期','三期'];
+let COMBO={1:'',2:'',3:''}; try{ const c=JSON.parse(store.get('lj_combo')||'null'); if(c&&typeof c==='object') COMBO=Object.assign(COMBO,c); }catch(e){}
+function saveCombo(){ store.set('lj_combo',JSON.stringify(COMBO)); }
+const phaseOf=a=>Math.max(1,Math.min(3,a.base|0));
+function designOf(p,pick){ const id=(pick||COMBO)[p]; const a=id&&ALTS.find(x=>x.id===id); return a&&phaseOf(a)===p?a:null; }
+const comboOn=pick=>[1,2,3].some(p=>designOf(p,pick));
+function comboMods(stage,pick){ let mods=null; for(let p=1;p<=stage;p++){ const a=designOf(p,pick); if(!a) continue; mods=mods||{}; const m=resolveAlt(a); for(const k in m) mods[k]=Object.assign({},mods[k],m[k]); } return mods; }
+const altDelta=a=>(a.rows||[]).reduce((s,r)=>s+(Number.isFinite(+r.cost)?+r.cost:0),0);
+function comboCost(stage,pick){ let c=STAGE_CUM[stage]; for(let p=1;p<=stage;p++){ const a=designOf(p,pick); if(a) c+=altDelta(a); } return c; }
+const hs=str=>{ let h=0; for(let i=0;i<str.length;i++) h=(h*31+str.charCodeAt(i))|0; return (h>>>0).toString(36); };
+const comboKey=pick=>'combo:'+[1,2,3].map(p=>{ const a=designOf(p,pick); return a?a.id+'.'+hs(JSON.stringify(a.rows||[])):''; }).join(',');
+const comboLabel=pick=>[1,2,3].map(p=>PH_NAME[p]+'：'+((designOf(p,pick)||{}).name||'報告')).join('、');
+const fmtW=v=>v.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+function stageName(){ return S.alt&&(S.stage|0)>0? `本團隊設計組合 ${BASE_NAME[S.stage|0]}（${comboLabel()}）` : '報告'+BASE_NAME[S.stage|0]; }
+// on＝true：預報、應變改用採用的設計組合（依目前的工程進度）
+function setAlt(on){ if(on&&comboOn()){ S.alt=comboKey(); S.altMods=comboMods(S.stage|0); } else { S.alt=null; S.altMods=null; } syncCtl(); run(false); }
+// 情境面板：工程進度照舊選現況／一期／二期／全部，下面多一列「採用的設計」切報告原計畫或本團隊組合
+function renderStageAlts(){ const seg=$('#stageSeg'); if(!seg) return; let d=$('#designSeg');
+  if(!comboOn()){ if(d) d.closest('.field').remove(); return; }
+  if(!d){ seg.closest('.field').insertAdjacentHTML('afterend','<div class="field"><span class="lab">採用的設計</span><div class="seg" id="designSeg"><button type="button" data-d="0">報告原計畫</button><button type="button" data-d="1">本團隊設計組合</button></div><small id="designTxt"></small></div>'); d=$('#designSeg');
+    d.addEventListener('click',e=>{ const b=e.target.closest('button[data-d]'); if(b) setAlt(b.dataset.d==='1'); }); }
+  d.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.d==='1')===!!S.alt))); $('#designTxt').textContent='組合：'+comboLabel(); }
+$('#stageSeg').addEventListener('click',e=>{ const b=e.target.closest('button[data-v]'); if(b&&S.alt) S.altMods=comboMods(+b.dataset.v); },true);
 const _syncCtlA=syncCtl; syncCtl=function(){ _syncCtlA(); renderStageAlts(); };
-// 方案若被刪改，重新套用
-function refreshAltApplied(){ if(S.alt){ const a=ALTS.find(x=>x.id===S.alt); if(a){ S.altMods=resolveAlt(a); S.stage=a.base|0; } else { S.alt=null; S.altMods=null; } } }
+// 設計或組合被改、刪，重新套用
+function refreshAltApplied(){ if(S.alt){ if(comboOn()){ S.alt=comboKey(); S.altMods=comboMods(S.stage|0); } else { S.alt=null; S.altMods=null; } } }
+function setCombo(p,id){ COMBO[p]=id||''; saveCombo(); syncOp({k:'combo-put',c:COMBO}); const was=S.alt; refreshAltApplied(); syncCtl(); renderPhase(); if(was||S.alt) run(false); }
 
 // ---------- 分期頁：報告四階段＋自訂方案一起比 ----------
 renderPhase=function(){
   if(!SIM) return;
-  const cols=STAGES.map((st,k)=>({n:st.n,stage:k,mods:null,alt:null})).concat(ALTS.map(a=>({n:a.name,stage:a.base|0,mods:resolveAlt(a),alt:a})));
-  const rs=[74.51,88.03].map(P=>cols.map(c=>simulate({...S,P,D:3,bg:0,stage:c.stage,altMods:c.mods},null)));
-  const mx=Math.max(...rs.flat().map(s=>s.totExp))*1.1||1;
-  const N=cols.length, w=Math.max(560,120+N*104), h=250, pl=50, pt=24, pb=40, iw=w-pl-12, ih=h-pt-pb, gw=iw/N;
-  let s=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="各期與自訂方案的受影響人口">`;
-  for(let k=0;k<=4;k++){const v=mx*k/4,y=pt+ih*(1-k/4);s+=`<line x1="${pl}" x2="${w-12}" y1="${y}" y2="${y}" style="stroke:var(--line)"/><text x="${pl-5}" y="${y+3}" text-anchor="end">${Math.round(v).toLocaleString()}</text>`;}
-  if(ALTS.length){ const x0=pl+gw*STAGES.length; s+=`<line x1="${x0}" x2="${x0}" y1="${pt}" y2="${pt+ih}" style="stroke:var(--line2)" stroke-dasharray="4 3"/><text x="${x0+6}" y="${pt+10}" style="fill:var(--accent)">自訂方案 →</text>`; }
-  cols.forEach((c,k)=>{ [0,1].forEach(j=>{ const v=rs[j][k].totExp, bh=ih*v/mx, x=pl+gw*k+gw*0.18+j*gw*0.32; const col=c.alt?(j?'var(--watch)':'var(--warn)'):(j?'var(--deep)':'var(--accent)'); s+=`<rect x="${x}" y="${pt+ih-bh}" width="${gw*0.3}" height="${bh}" rx="2" style="fill:${col}"/><text x="${x+gw*0.15}" y="${pt+ih-bh-4}" text-anchor="middle" style="fill:var(--ink)">${Math.round(v).toLocaleString()}</text>`; });
-    s+=`<text x="${pl+gw*k+gw/2}" y="${h-22}" text-anchor="middle" style="fill:var(--ink);font-size:11px;font-family:var(--f-body)">${esc(c.n.length>7?c.n.slice(0,7)+'…':c.n)}</text>${c.alt?`<text x="${pl+gw*k+gw/2}" y="${h-8}" text-anchor="middle" style="font-size:9.5px">以${BASE_NAME[c.stage]}為基礎</text>`:''}`; });
-  s+=`<rect x="${pl+6}" y="6" width="10" height="10" style="fill:var(--accent)"/><text x="${pl+20}" y="15" style="fill:var(--ink)">5 年</text><rect x="${pl+66}" y="6" width="10" height="10" style="fill:var(--deep)"/><text x="${pl+80}" y="15" style="fill:var(--ink)">10 年</text>${ALTS.length?`<rect x="${pl+130}" y="6" width="10" height="10" style="fill:var(--warn)"/><text x="${pl+144}" y="15" style="fill:var(--ink)">自訂方案 5 年／10 年</text>`:''}<text x="${w-12}" y="15" text-anchor="end">受影響人口（加權）</text>`;
-  $('#phChart').innerHTML=s+'</svg>';
+  const on=comboOn(), P2=[74.51,88.03];
+  const rs=P2.map(P=>STAGES.map((_,k)=>simulate({...S,P,D:3,bg:0,stage:k,altMods:null},null)));
+  const rc=on? P2.map((P,pi)=>STAGES.map((_,k)=>k?simulate({...S,P,D:3,bg:0,stage:k,altMods:comboMods(k)},null):rs[pi][0])) : null;
+  const mx=Math.max(...rs.flat().map(x=>x.totExp),...(rc?rc.flat().map(x=>x.totExp):[]))*1.1||1;
+  const N=STAGES.length, w=on?680:560, h=250, pl=50, pt=24, pb=40, iw=w-pl-12, ih=h-pt-pb, gw=iw/N, bw=gw*(on?0.19:0.3);
+  let sv=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="報告與本團隊設計組合各期完成後的受影響人口">`;
+  for(let k=0;k<=4;k++){const v=mx*k/4,y=pt+ih*(1-k/4);sv+=`<line x1="${pl}" x2="${w-12}" y1="${y}" y2="${y}" style="stroke:var(--line)"/><text x="${pl-5}" y="${y+3}" text-anchor="end">${Math.round(v).toLocaleString()}</text>`;}
+  STAGES.forEach((st,k)=>{ const bars=[[rs[0][k],'var(--accent)'],[rs[1][k],'var(--deep)']]; if(on&&k) bars.push([rc[0][k],'var(--warn)'],[rc[1][k],'var(--watch)']);
+    const x0=pl+gw*k+(gw-bw*bars.length-(bars.length-1)*2)/2;
+    bars.forEach(([r,col],jj)=>{ const v=r.totExp, bh=ih*v/mx, x=x0+jj*(bw+2); sv+=`<rect x="${x}" y="${pt+ih-bh}" width="${bw}" height="${bh}" rx="2" style="fill:${col}"/><text x="${x+bw/2}" y="${pt+ih-bh-4}" text-anchor="middle" style="fill:var(--ink);font-size:${on?9.5:11}px">${Math.round(v).toLocaleString()}</text>`; });
+    sv+=`<text x="${pl+gw*k+gw/2}" y="${h-22}" text-anchor="middle" style="fill:var(--ink);font-size:11px;font-family:var(--f-body)">${esc(st.n)}</text>${on&&k?`<text x="${pl+gw*k+gw/2}" y="${h-8}" text-anchor="middle" style="font-size:9.5px">${esc(PH_NAME[k]+'：'+((designOf(k)||{}).name||'報告'))}</text>`:''}`; });
+  sv+=`<rect x="${pl+6}" y="6" width="10" height="10" style="fill:var(--accent)"/><text x="${pl+20}" y="15" style="fill:var(--ink)">報告 5 年</text><rect x="${pl+84}" y="6" width="10" height="10" style="fill:var(--deep)"/><text x="${pl+98}" y="15" style="fill:var(--ink)">報告 10 年</text>${on?`<rect x="${pl+168}" y="6" width="10" height="10" style="fill:var(--warn)"/><text x="${pl+182}" y="15" style="fill:var(--ink)">本團隊組合 5 年</text><rect x="${pl+280}" y="6" width="10" height="10" style="fill:var(--watch)"/><text x="${pl+294}" y="15" style="fill:var(--ink)">10 年</text>`:''}<text x="${w-12}" y="15" text-anchor="end">受影響人口（加權）</text>`;
+  $('#phChart').innerHTML=sv+'</svg>';
   $('#phTable').innerHTML=`<tr><th>階段</th><th style="text-align:right">該期經費(萬元)</th><th style="text-align:right">保護人口</th><th style="text-align:right">5 年受影響</th><th style="text-align:right">該期減少</th><th style="text-align:right">每億元減少</th></tr>`+
    STAGES.map((st,k)=>{ const e=rs[0][k].totExp, prev=k?rs[0][k-1].totExp:e, red=prev-e;
      return `<tr><td>${st.n}</td><td class="n">${st.cost?st.cost.toLocaleString(undefined,{minimumFractionDigits:2}):'–'}</td><td class="n">${st.pop?st.pop.toLocaleString():'–'}</td><td class="n">${Math.round(e).toLocaleString()}</td><td class="n">${k?Math.round(red).toLocaleString():'–'}</td><td class="n">${k&&st.cost?Math.round(red/st.cost*10000).toLocaleString()+' 人':'–'}</td></tr>`; }).join('')+
    `<tr><td><b>合計</b></td><td class="n"><b>89,033.10</b></td><td class="n">33,198</td><td colspan="3"></td></tr>`;
-  const cmp=$('#altCmp'); if(cmp){ const e0=rs[0][0].totExp, e3=rs[0][3].totExp, t3=rs[1][3].totExp;
-    cmp.innerHTML= ALTS.length? `<div class="tscroll"><table><tr><th>方案</th><th style="text-align:right">總經費(萬元)</th><th style="text-align:right">5 年受影響</th><th style="text-align:right">10 年受影響</th><th style="text-align:right">比報告全部完成（5 年）</th><th style="text-align:right">經費差</th><th style="text-align:right">每億元減少</th></tr>`+
-      `<tr class="muted"><td>報告全部完成</td><td class="n">89,033.10</td><td class="n">${Math.round(e3).toLocaleString()}</td><td class="n">${Math.round(t3).toLocaleString()}</td><td class="n">基準</td><td class="n">基準</td><td class="n">${Math.round((e0-e3)/89033.10*10000).toLocaleString()} 人</td></tr>`+
-      ALTS.map((a,i)=>{ const k=STAGES.length+i, e=rs[0][k].totExp, t=rs[1][k].totExp, c=altCost(a), d=e-e3, dc=c-89033.10;
-        return `<tr><td><b>${esc(a.name)}</b><br><span class="muted" style="font-size:11px">以${BASE_NAME[a.base|0]}為基礎，調整 ${(a.rows||[]).length} 處</span></td><td class="n">${c.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td class="n">${Math.round(e).toLocaleString()}</td><td class="n">${Math.round(t).toLocaleString()}</td><td class="n ${d<0?'okc':d>0?'badc':''}">${d<0?'少 ':d>0?'多 ':''}${Math.abs(Math.round(d)).toLocaleString()} 人</td><td class="n ${dc>0?'badc':dc<0?'okc':''}">${dc>0?'+':''}${Math.round(dc).toLocaleString()}</td><td class="n">${c>0?Math.round((e0-e)/c*10000).toLocaleString()+' 人':'–'}</td></tr>`; }).join('')+`</table></div><p class="muted" style="font-size:11.5px;margin:6px 0 0">「比報告全部完成」為負（綠色）＝本方案受影響人口更少。經費＝報告基礎階段累計經費＋方案各處經費增減。試算沿用預報分頁的外水、潮位與土地利用設定。</p>`
-      : '<p class="muted" style="font-size:12.5px;margin:0">還沒有自訂方案。承辦人員可在下方「自訂改善方案」新增。</p>'; }
+  const cmp=$('#altCmp'); if(cmp){ const ed=canEditAlt();
+    const pickUI=[1,2,3].map(p=>{ const opts=ALTS.filter(a=>phaseOf(a)===p); const cur=designOf(p);
+      return `<label class="combo-p"><span class="lab">${PH_NAME[p]}</span>${ed?`<select data-combo="${p}"><option value="">報告原計畫</option>${opts.map(a=>`<option value="${esc(a.id)}"${cur&&cur.id===a.id?' selected':''}>${esc(a.name)}</option>`).join('')}</select>`:`<b>${esc(cur?cur.name:'報告原計畫')}</b>`}</label>`; }).join('');
+    const rows=on? [1,2,3].map(k=>{ const e=rs[0][k].totExp, c=rc[0][k].totExp, d=c-e, cr=STAGE_CUM[k], cc=comboCost(k), dc=cc-cr;
+        return `<tr><td>${BASE_NAME[k]}<br><span class="muted" style="font-size:11px">${esc(PH_NAME[k])}採用：${esc((designOf(k)||{}).name||'報告原計畫')}</span></td><td class="n">${fmtW(cr)}</td><td class="n">${fmtW(cc)}</td><td class="n">${Math.round(e).toLocaleString()}</td><td class="n">${Math.round(c).toLocaleString()}</td><td class="n ${d<0?'okc':d>0?'badc':''}">${d<0?'少 ':d>0?'多 ':''}${Math.abs(Math.round(d)).toLocaleString()} 人</td><td class="n ${dc>0?'badc':dc<0?'okc':''}">${dc>0?'+':''}${Math.round(dc).toLocaleString()}</td></tr>`; }).join('') : '';
+    cmp.innerHTML=`<div class="combo-pick">${pickUI}</div>${ed?'<p class="muted" style="font-size:11.5px;margin:4px 0 8px">承辦人員在這裡選每一期採用哪個設計；沒有選的期別照報告原計畫。改了會同步給所有登入的承辦與主管。</p>':''}`+
+      (on? `<div class="tscroll"><table><tr><th>完成到</th><th style="text-align:right">報告累計經費</th><th style="text-align:right">組合累計經費</th><th style="text-align:right">報告 5 年受影響</th><th style="text-align:right">組合 5 年受影響</th><th style="text-align:right">組合比報告</th><th style="text-align:right">經費差</th></tr>${rows}</table></div>
+        <div class="acts" style="margin-top:8px"><button class="btn sm" type="button" id="comboApply">${S.alt?'預報改回報告原計畫':'用這個組合看預報與應變'}</button></div>
+        <p class="muted" style="font-size:11.5px;margin:6px 0 0">每一列都是「同一期完成時」報告與本團隊組合的比較；綠色＝本團隊組合受影響人口更少。經費＝報告累計經費＋各期採用設計的經費增減。試算沿用預報分頁的外水、潮位與土地利用設定。</p>`
+      : `<p class="muted" style="font-size:12.5px;margin:0">${ALTS.length?'目前每一期都採用報告原計畫。':'還沒有本團隊設計。承辦人員可在下方「本團隊各期設計」新增。'}</p>`);
+    cmp.querySelectorAll('[data-combo]').forEach(el=>el.addEventListener('change',()=>setCombo(+el.dataset.combo,el.value)));
+    const ca=$('#comboApply'); if(ca) ca.addEventListener('click',()=>{ setAlt(!S.alt); renderPhase(); }); }
   const fin=rs[0][3].res, left=TRUNKS.filter(t=>fin[t.id].maxD>=10).sort((a,b)=>fin[b.id].maxD-fin[a.id].maxD);
-  $('#phResid').innerHTML= left.length? `<p>在目前外水與潮位條件下，報告全部完成後 5 年重現期降雨仍會積水：</p><ul>${left.map(t=>`<li><b>${esc(t.v)}｜${esc(t.id)}幹線</b> 約 ${num(fin[t.id].maxD)} cm：${t.ph.length?'改善後仍受外水頂托，建議搭配移動式抽水機預佈':'規劃未列改善工程，出口受'+esc(t.rv)+'外水頂托，建議納入預警與抽水機調度'}。</li>`).join('')}</ul><p class="muted">這是工程之外，需要預報與調度系統補位的地方，也是自訂方案可以著力的地方。</p>`
+  $('#phResid').innerHTML= left.length? `<p>在目前外水與潮位條件下，報告全部完成後 5 年重現期降雨仍會積水：</p><ul>${left.map(t=>`<li><b>${esc(t.v)}｜${esc(t.id)}幹線</b> 約 ${num(fin[t.id].maxD)} cm：${t.ph.length?'改善後仍受外水頂托，建議搭配移動式抽水機預佈':'規劃未列改善工程，出口受'+esc(t.rv)+'外水頂托，建議納入預警與抽水機調度'}。</li>`).join('')}</ul><p class="muted">這是工程之外，需要預報與調度系統補位的地方，也是本團隊設計可以著力的地方。</p>`
    : '<p>在目前條件下，全部工程完成後 5 年重現期降雨已無明顯積水。可以到預報分頁把外水位或潮位調高，看極端情境的殘餘風險。</p>';
-  renderAltList();
+  renderAltList(rs);
 };
 
 // ---------- 方案清單與編輯器 ----------
 let ALTEDIT=null; // 編輯中的方案（複本）
 const canEditAlt=()=>ROLE==='staff'||(typeof DEMO!=='undefined'&&DEMO.on);
-function renderAltList(){ const box=$('#altList'); if(!box) return;
-  box.innerHTML= ALTS.length? ALTS.map(a=>`<div class="alt-item"><div><b>${esc(a.name)}</b>${S.alt===a.id?' <span class="pill l0">套用中</span>':''}<div class="muted" style="font-size:12px">以報告${BASE_NAME[a.base|0]}為基礎｜調整 ${(a.rows||[]).map(r=>esc(r.tr)+'幹線').join('、')||'（尚未調整）'}｜總經費 ${altCost(a).toLocaleString(undefined,{maximumFractionDigits:2})} 萬元</div>${a.note?`<div style="font-size:12.5px;margin-top:2px">${esc(a.note)}</div>`:''}</div><div class="acts"><button class="btn sm" type="button" data-alt-apply="${esc(a.id)}">${S.alt===a.id?'取消套用':'套用到預報'}</button>${canEditAlt()?`<button class="btn sm ghost" type="button" data-alt-edit="${esc(a.id)}">編輯</button><button class="btn sm ghost" type="button" data-alt-del="${esc(a.id)}">刪除</button>`:''}</div></div>`).join('')
-    : '<p class="muted" style="font-size:12.5px;margin:0">目前沒有自訂方案。</p>';
-  box.querySelectorAll('[data-alt-apply]').forEach(b=>b.addEventListener('click',()=>{ setAlt(S.alt===b.dataset.altApply?null:b.dataset.altApply); }));
-  box.querySelectorAll('[data-alt-edit]').forEach(b=>b.addEventListener('click',()=>{ const a=ALTS.find(x=>x.id===b.dataset.altEdit); if(a){ ALTEDIT=JSON.parse(JSON.stringify(a)); renderAltEdit(); } }));
-  box.querySelectorAll('[data-alt-del]').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.arm!=='1'){ b.dataset.arm='1'; b.textContent='再按一次確認刪除'; setTimeout(()=>{ b.dataset.arm=''; b.textContent='刪除'; },3000); return; } ALTS=ALTS.filter(x=>x.id!==b.dataset.altDel); saveAlts(); syncOp({k:'alt-del',id:b.dataset.altDel}); refreshAltApplied(); syncCtl(); run(false); }));
+function renderAltList(rs){ const box=$('#altList'); if(!box) return; const ed=canEditAlt();
+  const item=a=>{ const p=phaseOf(a), used=COMBO[p]===a.id, d=altDelta(a);
+    let eff=''; if(rs&&SIM){ const e=simulate({...S,P:74.51,D:3,bg:0,stage:p,altMods:comboMods(p,Object.assign({},COMBO,{[p]:a.id}))},null).totExp, r=rs[0][p].totExp, df=e-r;
+      eff=`<div style="font-size:12px;margin-top:2px">若${PH_NAME[p]}採用：${esc(BASE_NAME[p])}時 5 年受影響 ${Math.round(e).toLocaleString()} 人（報告同期 ${Math.round(r).toLocaleString()} 人，<span class="${df<0?'okc':df>0?'badc':''}">${df<0?'少 '+Math.abs(Math.round(df)).toLocaleString()+' 人':df>0?'多 '+Math.round(df).toLocaleString()+' 人':'相同'}</span>）${p>1?'<span class="muted">；前面各期照採用的組合</span>':''}</div>`; }
+    return `<div class="alt-item"><div><b>${esc(a.name)}</b>${used?' <span class="pill l0">已採用</span>':''}<div class="muted" style="font-size:12px">取代報告${PH_NAME[p]}｜調整 ${(a.rows||[]).map(r=>esc(r.tr)+'幹線').join('、')||'（尚未調整）'}｜${PH_NAME[p]}經費 ${fmtW(STAGES[p].cost+d)} 萬元（報告 ${fmtW(STAGES[p].cost)}，${d>0?'+':''}${Math.round(d).toLocaleString()}）</div>${a.note?`<div style="font-size:12.5px;margin-top:2px">${esc(a.note)}</div>`:''}${eff}</div>
+      <div class="acts">${ed?`<button class="btn sm" type="button" data-alt-use="${esc(a.id)}">${used?'取消採用':'採用為'+PH_NAME[p]+'設計'}</button><button class="btn sm ghost" type="button" data-alt-edit="${esc(a.id)}">編輯</button><button class="btn sm ghost" type="button" data-alt-del="${esc(a.id)}">刪除</button>`:''}</div></div>`; };
+  box.innerHTML= ALTS.length? [1,2,3].map(p=>{ const list=ALTS.filter(a=>phaseOf(a)===p); return list.length?`<div class="lab" style="font-size:12.5px;margin:10px 0 4px">${PH_NAME[p]}設計（取代報告${PH_NAME[p]}，${STAGES[p].cost.toLocaleString(undefined,{minimumFractionDigits:2})} 萬元）</div>`+list.map(item).join(''):''; }).join('')
+    : '<p class="muted" style="font-size:12.5px;margin:0">目前沒有本團隊設計。</p>';
+  box.querySelectorAll('[data-alt-use]').forEach(b=>b.addEventListener('click',()=>{ const a=ALTS.find(x=>x.id===b.dataset.altUse); if(!a) return; const p=phaseOf(a); setCombo(p,COMBO[p]===a.id?'':a.id); }));
+  box.querySelectorAll('[data-alt-edit]').forEach(b=>b.addEventListener('click',()=>{ const a=ALTS.find(x=>x.id===b.dataset.altEdit); if(a){ ALTEDIT=JSON.parse(JSON.stringify(a)); ALTEDIT.base=phaseOf(ALTEDIT); renderAltEdit(); } }));
+  box.querySelectorAll('[data-alt-del]').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.arm!=='1'){ b.dataset.arm='1'; b.textContent='再按一次確認刪除'; setTimeout(()=>{ b.dataset.arm=''; b.textContent='刪除'; },3000); return; }
+    const id=b.dataset.altDel; ALTS=ALTS.filter(x=>x.id!==id); saveAlts(); syncOp({k:'alt-del',id}); const p=[1,2,3].find(q=>COMBO[q]===id); if(p) setCombo(p,''); else { refreshAltApplied(); syncCtl(); renderPhase(); run(false); } }));
   ['#altNew','#altExport','#altImportLab'].forEach(s=>{ const e=$(s); if(e) e.hidden=!canEditAlt(); });
-  const sn=$('#altSyncNote'); if(sn) sn.textContent= relayBase()&&ROLE!=='citizen'? '方案存在中繼站：承辦人員儲存後，所有登入的承辦、主管、里長打開都看得到同一份（每 15 秒更新）。只有承辦人員可以新增、編輯、刪除。一般民眾看不到方案。' : '目前沒有連上中繼站，方案只存在這台裝置；要給同事，按「匯出方案檔」再請對方匯入。只有承辦人員可以新增與編輯。';
+  const sn=$('#altSyncNote'); if(sn) sn.textContent= relayBase()&&ROLE!=='citizen'? '設計與採用組合存在中繼站：承辦人員儲存後，所有登入的承辦與主管打開都看得到同一份（每 15 秒更新）。只有承辦人員可以新增、編輯、刪除與選擇採用。一般民眾看不到。' : '目前沒有連上中繼站，方案只存在這台裝置；要給同事，按「匯出方案檔」再請對方匯入。只有承辦人員可以新增與編輯。';
 }
 function trunkOpts(sel){ return TRUNKS.slice().sort((a,b)=>a.v.localeCompare(b.v,'zh-Hant')).map(t=>`<option value="${esc(t.id)}"${t.id===sel?' selected':''}>${esc(t.id)} 幹線（${esc(t.v)}）</option>`).join(''); }
 function rowHint(r){ const t=TBY[r.tr]; if(!t) return ''; if(!Q5REF) calcRef(); const now=Q5REF[t.id]*capRatio0(t), rep=Q5REF[t.id]*Math.max(capRatio0(t),1.25), c=manning(r), q5=q5of(t,+r.A);
-  return `排水能力（模型推估）：現況約 ${num(now,2)} cms、照報告改善後約 ${num(rep,2)} cms｜5 年洪峰約 ${num(q5,2)} cms（集水 ${num(+r.A>0?+r.A:t.A,1)} ha）${c>0?`｜<b>本方案斷面 ${num(c,2)} cms，為 5 年洪峰的 ${num(c/q5*100)}%</b>`:''}${t.co?'｜出口受潮位影響，斷面加大受限於外水':''}`; }
+  return `報告排在${t.ph.length?[...new Set(t.ph)].map(x=>PH_NAME[x]).join('、'):'（未列改善）'}${t.ph.length&&ALTEDIT&&!t.ph.includes(phaseOf(ALTEDIT))?'，放在本期等於提前施作':''}｜排水能力（模型推估）：現況約 ${num(now,2)} cms、照報告改善後約 ${num(rep,2)} cms｜5 年洪峰約 ${num(q5,2)} cms（集水 ${num(+r.A>0?+r.A:t.A,1)} ha）${c>0?`｜<b>本方案斷面 ${num(c,2)} cms，為 5 年洪峰的 ${num(c/q5*100)}%</b>`:''}${t.co?'｜出口受潮位影響，斷面加大受限於外水':''}`; }
 function renderAltEdit(){ const box=$('#altEdit'); if(!box) return; const a=ALTEDIT; if(!a){ box.hidden=true; box.innerHTML=''; return; } box.hidden=false;
-  box.innerHTML=`<div class="field"><label for="altName">方案名稱</label><input type="text" id="altName" maxlength="20" value="${esc(a.name||'')}" placeholder="例如：方案 A 忠山井合併抽水站"></div>
-   <div class="field"><label for="altBase">以哪個報告階段為基礎</label><select id="altBase">${BASE_NAME.map((n,k)=>`<option value="${k}"${(a.base|0)===k?' selected':''}>報告${n}（累計 ${STAGE_CUM[k].toLocaleString()} 萬元）</option>`).join('')}</select><small>沒有調整的幹線，照這個報告階段計算。</small></div>
+  box.innerHTML=`<div class="field"><label for="altName">方案名稱</label><input type="text" id="altName" maxlength="20" value="${esc(a.name||'')}" placeholder="例如：一期 A 忠幹線箱涵＋抽水站"></div>
+   <div class="field"><label for="altBase">這是第幾期的設計</label><select id="altBase">${[1,2,3].map(k=>`<option value="${k}"${phaseOf(a)===k?' selected':''}>${PH_NAME[k]}（取代報告${PH_NAME[k]}，${STAGES[k].cost.toLocaleString(undefined,{minimumFractionDigits:2})} 萬元）</option>`).join('')}</select><small>只列這一期要改做的幹線；沒列的照報告這一期施作。前面各期照「採用的設計組合」，後面各期照報告。</small></div>
    <div class="field"><label for="altNote">方案說明（給機關看的一句話）</label><input type="text" id="altNote" maxlength="80" value="${esc(a.note||'')}" placeholder="例如：忠、山幹線改接同一座 6 cms 抽水站，省一座抽水站用地"></div>
-   <div class="lab" style="font-size:12.5px;margin:8px 0 6px">調整的幹線（留空＝沿用基礎階段）</div>
+   <div class="lab" style="font-size:12.5px;margin:8px 0 6px">這一期改做的幹線（欄位留空＝照報告）</div>
    <div id="altRows">${(a.rows||[]).map((r,i)=>`<div class="alt-row" data-i="${i}">
      <div class="alt-g"><label>幹線<select data-k="tr">${trunkOpts(r.tr)}</select></label><label>集水面積 ha<input type="number" data-k="A" min="0" step="0.1" value="${esc(r.A??'')}" placeholder="${esc((TBY[r.tr]||{}).A??'')}"></label>
      <label>斷面<select data-k="shape"><option value="">沿用</option><option value="circle"${r.shape==='circle'?' selected':''}>圓管</option><option value="box"${r.shape==='box'?' selected':''}>箱涵</option></select></label>
@@ -3965,7 +3998,7 @@ function renderAltEdit(){ const box=$('#altEdit'); if(!box) return; const a=ALTE
      <label class="alt-note">路線、工法說明<input type="text" data-k="note" maxlength="80" value="${esc(r.note||'')}" placeholder="例如：改沿中央路二段 200 巷，分洪 8 ha 到山幹線"></label>
      <div class="muted alt-hint">${rowHint(r)}</div><button class="btn sm ghost" type="button" data-rm="${i}">移除這一處</button></div>`).join('')}</div>
    <div class="acts" style="margin-top:8px"><button class="btn sm ghost" type="button" id="altAddRow">＋ 新增一處調整</button></div>
-   <div class="acts" style="margin-top:12px"><button class="btn" type="button" id="altSave">儲存並套用</button><button class="btn ghost" type="button" id="altCancel">取消</button></div>
+   <div class="acts" style="margin-top:12px"><button class="btn" type="button" id="altSave">儲存</button><button class="btn ghost" type="button" id="altCancel">取消</button></div>
    <div id="altMsg" style="font-size:12.5px;margin-top:6px"></div>
    <p class="muted" style="font-size:11.5px;margin:8px 0 0">斷面以曼寧公式滿流估算（n＝0.013），坡度預設 1‰；外水頂托時排水能力會再打折，所以沿海幹線只加大管徑效果有限，要配抽水站。分洪改接：把來源幹線的集水面積調小、承接幹線調大。這是概念比較，正式設計仍需 SWMM 重新檢核。</p>`;
   const rd=()=>{ a.name=$('#altName').value.trim(); a.base=+$('#altBase').value; a.note=$('#altNote').value.trim(); box.querySelectorAll('.alt-row').forEach(row=>{ const r=a.rows[+row.dataset.i]; row.querySelectorAll('[data-k]').forEach(el=>{ r[el.dataset.k]=el.value; }); }); };
@@ -3976,12 +4009,15 @@ function renderAltEdit(){ const box=$('#altEdit'); if(!box) return; const a=ALTE
   $('#altSave').addEventListener('click',()=>{ rd(); if(!a.name){ $('#altMsg').innerHTML='<span class="badc">請填方案名稱。</span>'; return; } if(ALTS.some(x=>x.name===a.name&&x.id!==a.id)){ $('#altMsg').innerHTML='<span class="badc">已有同名方案。</span>'; return; }
     const bad=(a.rows||[]).find(r=>['A','d','w','h','slope','pump','det'].some(k=>r[k]!==''&&r[k]!=null&&!(+r[k]>=0)));
     if(bad){ $('#altMsg').innerHTML='<span class="badc">數字欄位不能是負數。</span>'; return; }
-    a.by=ROLE_NAME[ROLE]+'·'+DEVID.slice(-4); const i=ALTS.findIndex(x=>x.id===a.id); if(i>=0) ALTS[i]=a; else ALTS.push(a); saveAlts(); syncOp({k:'alt-put',a}); ALTEDIT=null; renderAltEdit(); setAlt(a.id); });
+    a.by=ROLE_NAME[ROLE]+'·'+DEVID.slice(-4); const i=ALTS.findIndex(x=>x.id===a.id); if(i>=0) ALTS[i]=a; else ALTS.push(a); saveAlts(); syncOp({k:'alt-put',a}); ALTEDIT=null; renderAltEdit();
+    // 這一期還沒採用設計（或本來就採用這個）→ 直接採用並用組合看這一期完成的狀態
+    const p=phaseOf(a), moved=[1,2,3].find(q=>q!==p&&COMBO[q]===a.id); if(moved) COMBO[moved]='';
+    if(!designOf(p)||COMBO[p]===a.id){ S.stage=p; setCombo(p,a.id); setAlt(true); } else { if(moved) setCombo(moved,''); refreshAltApplied(); syncCtl(); renderPhase(); if(S.alt) run(false); } });
 }
-$('#altNew').addEventListener('click',()=>{ ALTEDIT={id:'alt'+Date.now().toString(36),name:'方案 '+String.fromCharCode(65+ALTS.length%26),base:3,note:'',rows:[{tr:'忠',slope:1}]}; renderAltEdit(); const e=$('#altEdit'); if(e) e.scrollIntoView({block:'nearest'}); });
-$('#altExport').addEventListener('click',e=>{ if(!ALTS.length) return; saveFile(e.currentTarget,`龍井_自訂改善方案_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`,JSON.stringify({kind:'longjing-alts',v:1,at:new Date().toISOString(),alts:ALTS},null,1),'application/json'); });
+$('#altNew').addEventListener('click',()=>{ const p0=[1,2,3].find(q=>!ALTS.some(a=>phaseOf(a)===q))||1; ALTEDIT={id:'alt'+Date.now().toString(36),name:PH_NAME[p0]+' '+String.fromCharCode(65+ALTS.filter(a=>phaseOf(a)===p0).length%26),base:p0,note:'',rows:[{tr:'忠',slope:1}]}; renderAltEdit(); const e=$('#altEdit'); if(e) e.scrollIntoView({block:'nearest'}); });
+$('#altExport').addEventListener('click',e=>{ if(!ALTS.length) return; saveFile(e.currentTarget,`龍井_自訂改善方案_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`,JSON.stringify({kind:'longjing-alts',v:2,at:new Date().toISOString(),alts:ALTS,combo:COMBO},null,1),'application/json'); });
 $('#altImport').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(String(rd.result)); const list=Array.isArray(j)?j:j.alts; if(!Array.isArray(list)) throw new Error('不是方案檔');
-    let n=0; list.forEach(a=>{ if(!a||!a.name||!Array.isArray(a.rows)) return; const c={id:'alt'+Date.now().toString(36)+n,name:String(a.name).slice(0,20),base:Math.max(0,Math.min(3,a.base|0)),note:String(a.note||'').slice(0,80),rows:a.rows.filter(r=>r&&TBY[r.tr]).slice(0,30)}; while(ALTS.some(x=>x.name===c.name)) c.name=c.name.slice(0,17)+'（匯入）'; c.by=ROLE_NAME[ROLE]+'·'+DEVID.slice(-4); ALTS.push(c); syncOp({k:'alt-put',a:c}); n++; });
+    let n=0; list.forEach(a=>{ if(!a||!a.name||!Array.isArray(a.rows)) return; const c={id:'alt'+Date.now().toString(36)+n,name:String(a.name).slice(0,20),base:Math.max(1,Math.min(3,a.base|0)),note:String(a.note||'').slice(0,80),rows:a.rows.filter(r=>r&&TBY[r.tr]).slice(0,30)}; while(ALTS.some(x=>x.name===c.name)) c.name=c.name.slice(0,17)+'（匯入）'; c.by=ROLE_NAME[ROLE]+'·'+DEVID.slice(-4); ALTS.push(c); syncOp({k:'alt-put',a:c}); n++; });
     saveAlts(); syncCtl(); renderPhase(); $('#altImpMsg').innerHTML=`<span class="okc">已匯入 ${n} 個方案。</span>`; }catch(err){ $('#altImpMsg').innerHTML=`<span class="badc">讀不懂這個檔案：${esc(err.message)}</span>`; } e.target.value=''; }; rd.readAsText(f); });
 const _applyRoleA=applyRole; applyRole=function(r){ _applyRoleA(r); if(typeof renderAltList==='function') renderAltList(); };
 // 中繼站同步：伺服器的方案為準，再疊上還沒上傳成功的本機操作；第一次連上時，把本機舊方案補傳
@@ -3993,7 +4029,9 @@ function mergeAlts(server){
   const changed=altSig(next)!==altSig(ALTS); ALTS=next; saveAlts();
   if(changed){ const was=S.alt; refreshAltApplied(); syncCtl(); if(isOpen('phase')) renderPhase(); if(was) run(false); }
 }
-const _applyStateA=applyState; applyState=function(j){ _applyStateA(j); if(j&&Array.isArray(j.alts)) mergeAlts(j.alts); };
+function mergeCombo(c){ if(!c||typeof c!=='object'||SYNC.q.some(o=>o.k==='combo-put')) return; const next={1:String(c[1]||''),2:String(c[2]||''),3:String(c[3]||'')};
+  if(JSON.stringify(next)===JSON.stringify(COMBO)) return; COMBO=next; saveCombo(); const was=S.alt; refreshAltApplied(); syncCtl(); if(isOpen('phase')) renderPhase(); if(was) run(false); }
+const _applyStateA=applyState; applyState=function(j){ _applyStateA(j); if(j&&Array.isArray(j.alts)) mergeAlts(j.alts); if(j&&j.combo) mergeCombo(j.combo); };
 refreshAltApplied();
 
 })();
