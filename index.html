@@ -3194,7 +3194,9 @@ applyTheme(store.get('lj_theme')==='dark'?'dark':'light');
 applyRole(ROLE); applyBig(store.get('lj_big')==='1');
 if(window.innerWidth<=760&&window.innerHeight<720){ $('#plainBox').classList.add('closed'); $('#capToggle').textContent='＋'; $('#capToggle').setAttribute('aria-expanded','false'); }
 if(store.get('lj_tour_seen')==='1') setTimeout(afterRole,0);
-syncCtl(); initMap(); run(true); renderGauges(); renderFaq(''); updatePill(); refreshAll();
+// 開啟時預設「即時」：資料到之前先以零雨量顯示（不會出現模擬的積水），模擬情境要自己點上方膠囊
+Object.assign(S,{preset:'live',live:true,P:0,bg:0});
+syncCtl(); initMap(); run(true); renderGauges(); renderFaq(''); updatePill(); refreshAll(); setTimeout(()=>{ if(S.preset==='live') startLive(); },0);
 window.__LJ={briefText:()=>briefText(),eventText:()=>eventText(),pressText:()=>pressText(),planOrderText:()=>planOrderText(),planLineText:()=>planLineText(),setRole:r=>{ if(r!=='citizen') store.set('lj_auth_'+r,'1'); applyRole(r); afterRole(); },setMulti,get PINS(){return PINS;},REPORTS:()=>REPORTS,S,LIVE,SST,CAL,refreshAll,startLive,run,startTour,endTour,showTab,applyPreset,get SIM(){return SIM;},get ALLOC(){return ALLOC;}};
 
 // ===================== v6 擴充：多人同步、里長查核、相機回報 =====================
