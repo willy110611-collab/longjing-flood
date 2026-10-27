@@ -1178,6 +1178,15 @@ input[type=datetime-local]{width:100%;min-width:0;font:inherit;font-size:13px;pa
 .legend .smk{width:16px;height:16px;display:inline-grid;place-items:center}
 .legend .smk.pump{width:auto}
 @media (max-height:760px){ .legend .lg-sym{display:none} }
+#phase .two{grid-template-columns:minmax(0,1fr)}
+#phase td:first-child{white-space:nowrap}
+.alt-item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;background:var(--surface2)}
+.alt-edit{border:1px solid var(--accent);border-radius:14px;padding:12px;margin-top:10px}
+.alt-row{border:1px solid var(--line);border-radius:12px;padding:10px;margin-bottom:8px;background:var(--surface2)}
+.alt-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:8px}
+.alt-g label,.alt-note{display:flex;flex-direction:column;gap:3px;font-size:11.5px;color:var(--muted)}
+.alt-note{margin-top:8px}
+.alt-hint{font-size:11.5px;margin:6px 0;line-height:1.6}
 .setmenu{left:auto;min-width:132px}
 #roleBtn~#setMenu{left:0}
 .setmenu .themebtn{border:0;background:transparent;backdrop-filter:none;text-align:left;padding:7px 10px;border-radius:8px;font-size:12.5px;letter-spacing:.08em;color:var(--ink)}
@@ -1423,9 +1432,22 @@ input[type=datetime-local]{width:100%;min-width:0;font:inherit;font-size:13px;pa
     <p class="muted" style="font-size:12px;margin:8px 0 0">經費、保護人口取自摘表-4（110 年物價）。受影響人口為替代模型試算值，用於比較各期相對效益。</p>
   </div>
 </div>
+<div class="card" style="margin-top:12px" id="altCmpBox">
+  <h2>自訂方案 vs 報告全部完成</h2>
+  <div id="altCmp"></div>
+</div>
 <div class="card" style="margin-top:12px" id="phResidBox">
   <h2>全部完成後仍有風險的幹線</h2>
   <div id="phResid" class="prose"></div>
+</div>
+<div class="card" style="margin-top:12px" id="altBox">
+  <h2>自訂改善方案（本團隊方案，非報告內容）</h2>
+  <p class="muted" style="font-size:12.5px;margin:0 0 10px">報告的一、二、三期保持原樣當對照組。實際設計若改了管徑、路線、抽水站或滯洪池，在這裡新增方案：選一個報告階段當基礎，再列出改動的幹線。存好後會出現在上方比較表、分期圖，以及「情境」面板的工程進度按鈕。</p>
+  <div id="altList"></div>
+  <div class="acts" style="margin-top:10px"><button class="btn sm" type="button" id="altNew">＋ 新增方案</button><button class="btn sm ghost" type="button" id="altExport">匯出方案檔</button><label class="btn sm ghost" id="altImportLab" style="cursor:pointer">匯入方案檔<input type="file" id="altImport" accept=".json,application/json" hidden></label></div>
+  <div id="altImpMsg" style="font-size:12px;margin-top:6px"></div>
+  <div id="altEdit" class="alt-edit" hidden></div>
+  <p class="muted" style="font-size:11.5px;margin:8px 0 0">方案存在這台裝置的瀏覽器；要給同事，按「匯出方案檔」再請對方匯入。只有承辦人員可以新增與編輯。</p>
 </div>
 </section>
 
@@ -1860,17 +1882,21 @@ function capRatio0(t){
 // 單一幹線模擬
 function simTrunk(t,sc,rain,pumps){
   if(!Q5REF) calcRef();
+  // 自訂方案（sc.altMods）：可改集水面積 A、排水能力 cap（cms，由斷面換算）、抽水站 pump（cms）、滯洪量 det（m³）
+  const mod=(sc.altMods&&sc.altMods[t.id])||null;
+  const tt=(mod&&mod.A>0)?Object.assign({},t,{A:mod.A}):t;
   const f=improveFrac(t,sc.stage);
   const Cuse = sc.dev ? t.C : t.C*0.86;
   const upF = (t.id==='B' && f>0) ? 0.4 : 1;       // 滯洪沉砂池削減坡地逕流
-  const q = routed(t,rain,Cuse,upF);
+  const q = routed(tt,rain,Cuse,upF);
   const cr0 = capRatio0(t)*CAL.cap*((sc.capMul&&sc.capMul[t.id])||1), cr = cr0 + (Math.max(cr0,1.25)-cr0)*f;   // 改善後至少滿足 5 年保護標準，且不會比現況差
-  const base = Q5REF[t.id]*cr;
-  const fixedPump = (f>0 ? t.pump : 0);
+  const base = (mod&&mod.cap>0) ? mod.cap*CAL.cap*((sc.capMul&&sc.capMul[t.id])||1) : Q5REF[t.id]*cr;
+  const fixedPump = (mod&&Number.isFinite(mod.pump)) ? mod.pump : (f>0 ? t.pump : 0);
+  const det = (mod&&mod.det>0) ? mod.det : 0;
   const mob = (pumps||0)*MOBILE_CMS;
   // 現場回報：實際佈設的抽水機（自某時刻起）與實測水深（資料同化：在該時刻把水深校正為實測值）
   const dep = (sc.deploy&&sc.deploy[t.id])||null, obs=(sc.obs&&sc.obs[t.id])||null;
-  const pondA = POND_FRAC*CAL.pond*t.A*1e4;
+  const pondA = POND_FRAC*CAL.pond*tt.A*1e4;
   let V=0; const depth=new Array(NSTEP), cap=new Array(NSTEP), E=new Array(NSTEP);
   let maxD=0,tStart=-1,tMax=0,dur=0;
   for(let i=0;i<NSTEP;i++){
@@ -1879,8 +1905,8 @@ function simTrunk(t,sc,rain,pumps){
     let extra=0; if(dep) for(const d of dep){ if(i>=d.from&&(d.to==null||i<d.to)) extra+=d.n; }
     cap[i] = base*gfac + fixedPump + mob + extra*MOBILE_CMS;
     V += (q[i]-cap[i])*DT*60; V -= 0.002*pondA*DT/60; if(V<0) V=0;
-    if(obs) for(const o of obs){ if(o.i===i) V=Math.max(0,o.d)/100*pondA; }
-    depth[i]=V/pondA*100; // cm
+    if(obs) for(const o of obs){ if(o.i===i) V=Math.max(0,o.d)/100*pondA+det; }
+    depth[i]=Math.max(0,V-det)/pondA*100; // cm（滯洪池先收納 det m³）
     if(depth[i]>maxD){maxD=depth[i];tMax=i;}
     if(depth[i]>=10){ if(tStart<0) tStart=i; dur+=DT; }
   }
@@ -2325,7 +2351,7 @@ function renderMaint(){
 const STAGES=[{n:'現況',cost:0,pop:0},{n:'一期完成',cost:29716.50,pop:16898},{n:'二期完成',cost:32848.65,pop:9300},{n:'全部完成',cost:26467.95,pop:7000}];
 function renderPhase(){
   if(!SIM) return;
-  const rs=[74.51,88.03].map(P=>STAGES.map((_,k)=>simulate({...S,P,D:3,bg:0,stage:k},null)));
+  const rs=[74.51,88.03].map(P=>STAGES.map((_,k)=>simulate({...S,P,D:3,bg:0,stage:k,altMods:null},null)));
   const mx=Math.max(...rs.flat().map(s=>s.totExp))*1.1||1;
   const w=560,h=240,pl=50,pt=24,pb=30,iw=w-pl-12,ih=h-pt-pb, gw=iw/4;
   let s=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="各期受影響人口">`;
@@ -2660,7 +2686,7 @@ function buildLiveRain(){
 }
 async function startLive(){
   S.preset='live'; S.live=true; syncCtl();
-  if(!LIVE.rain){ $('#plain').innerHTML='<p>正在抓取即時雨量…</p>'; await refreshAll(); }
+  if(!LIVE.rain){ $('#plain').innerHTML='<p>正在抓取即時雨量…</p>'; await refreshAll(); if(S.preset!=='live') return; }
   if(!LIVE.rain){ useSnapshot(); buildLiveRain(); }
   LIVE_T0=LIVE.t0||null; S.tp=LIVE.tp||4; S.off=-1.5; S.tideAmp=SST.tide.st==='live'?S.tideAmp:0.5; S.tideLag=0;
   syncCtl(); run(true);
@@ -3009,7 +3035,7 @@ function villMax(sim){ const out={}; TRUNKS.forEach(t=>{ const r=sim.res[t.id]; 
 function causeCounts(){ const c={gate:0,cap:0,none:0}; TRUNKS.forEach(t=>{ const r=SIM.res[t.id]; if(r.maxD>=10) c[causeOf(t,r).k]++; }); return c; }
 function progress(){ const now=NOWI(); const active=TRUNKS.filter(t=>REPORTS.some(r=>r.tr===t.id&&r.type!=='citizen')); let ok=0,bad=0,imp=0; active.forEach(t=>{ const a=assess(t); if(a.ahead<10) ok++; else if(a.trend==='down') imp++; else bad++; }); const dep=TRUNKS.reduce((s,t)=>s+deployedAt(t.id,now),0); return {active:active.length,ok,imp,bad,dep}; }
 let HISTCACHE={key:'',v:null};
-function histCompare(){ const key=[S.dev,S.stage,CAL.cap,CAL.pond].join(); if(HISTCACHE.key!==key){ HISTCACHE={key,v:{saola:simulate(Object.assign({tp:4,dev:S.dev,stage:S.stage},PRESETS.saola),null),soulik:simulate(Object.assign({tp:4,dev:S.dev,stage:S.stage},PRESETS.soulik),null)}}; } return HISTCACHE.v; }
+function histCompare(){ const key=[S.dev,S.stage,S.alt||'',CAL.cap,CAL.pond].join(); if(HISTCACHE.key!==key){ HISTCACHE={key,v:{saola:simulate(Object.assign({tp:4,dev:S.dev,stage:S.stage,altMods:S.altMods},PRESETS.saola),null),soulik:simulate(Object.assign({tp:4,dev:S.dev,stage:S.stage,altMods:S.altMods},PRESETS.soulik),null)}}; } return HISTCACHE.v; }
 function bossData(){
   const vm=villMax(SIM); const vs=Object.entries(vm).filter(([v,x])=>x.d>=10).sort((a,b)=>b[1].d-a[1].d);
   const worst=vs[0]; const lvl=worst?level(worst[1].d):0;
@@ -3448,10 +3474,10 @@ var CLEAN={key:'',res:null};
 function lcg(seed){ return ()=>{ seed=(Math.imul(seed,1664525)+1013904223)>>>0; return seed/4294967296; }; }
 function pFromT(T){ const pts=[[1,35.56],[2,54.1],[5,74.51],[10,88.03],[25,105.9]]; const x=Math.log(T); for(let k=1;k<pts.length;k++){ const a=pts[k-1],b=pts[k]; if(T<=b[0]) return a[1]+(b[1]-a[1])*(x-Math.log(a[0]))/(Math.log(b[0])-Math.log(a[0])); } return 105.9; }
 function computeClean(){
-  const key=[S.dev,S.stage,CAL.cap,CAL.pond].join(); if(CLEAN.key===key&&CLEAN.res) return CLEAN.res;
+  const key=[S.dev,S.stage,S.alt||'',CAL.cap,CAL.pond].join(); if(CLEAN.key===key&&CLEAN.res) return CLEAN.res;
   const R=lcg(20261024), N=1000, built=TRUNKS.filter(t=>t.built); const cnt={},cntC={},sur={}; built.forEach(t=>{cnt[t.id]=0;cntC[t.id]=0;sur[t.id]=0;});
   const capMul={}; built.forEach(t=>capMul[t.id]=1.15); const defects={}; MAINT.forEach(m=>{ defects[m[0]]=(defects[m[0]]||0)+1; });
-  for(let k=0;k<N;k++){ const T=Math.exp(R()*Math.log(25)); const sc={P:pFromT(T),D:2+Math.floor(R()*4),bg:R()<0.4?R()*20:0,off:-1.5+R()*1.4,tideAmp:0.3+R()*0.5,tideLag:Math.round(R()*6-3),tp:4,dev:S.dev,stage:S.stage}; const rain=rainSeries(sc); const scC=Object.assign({},sc,{capMul});
+  for(let k=0;k<N;k++){ const T=Math.exp(R()*Math.log(25)); const sc={P:pFromT(T),D:2+Math.floor(R()*4),bg:R()<0.4?R()*20:0,off:-1.5+R()*1.4,tideAmp:0.3+R()*0.5,tideLag:Math.round(R()*6-3),tp:4,dev:S.dev,stage:S.stage,altMods:S.altMods}; const rain=rainSeries(sc); const scC=Object.assign({},sc,{capMul});
     built.forEach(t=>{ const r=simTrunk(t,sc,rain,0); if(r.maxD>=10) cnt[t.id]++; let h=0; for(let i=0;i<NSTEP;i++) if(r.q[i]>r.cap[i]) h++; sur[t.id]+=h*DT/60; if(simTrunk(t,scC,rain,0).maxD>=10) cntC[t.id]++; }); }
   const maxSur=Math.max(1,...built.map(t=>sur[t.id]/N));
   const res=built.map(t=>{ const prob=cnt[t.id]/N, probC=cntC[t.id]/N, sh=sur[t.id]/N, df=(defects[t.id]||0);
@@ -3671,7 +3697,7 @@ svg text{font-family:inherit;fill:#4a5d68;font-size:10px}.fig{border:1px solid #
 </style></head><body>
 <button class="pbtn" onclick="print()">列印／另存 PDF</button>
 <h1>龍井區雨水下水道 淹水預警事件報告</h1>
-<div class="meta"><span>情境：${esc(scn)}</span><span>報告時刻：${fmtT(NOWI())}</span><span>產出時間：${at.toLocaleString('zh-TW',{hour12:false})}</span><span>產出：龍井智慧防汛平台</span></div>
+<div class="meta"><span>情境：${esc(scn)}</span><span>工程：${esc(stageName())}</span><span>報告時刻：${fmtT(NOWI())}</span><span>產出時間：${at.toLocaleString('zh-TW',{hour12:false})}</span><span>產出：龍井智慧防汛平台</span></div>
 <div class="hl">${head}${dec.length?`<br>建請決定：<b>${dec.join('、')}</b>`:''}</div>
 <div class="kp">${kp(B.vs.filter(([v])=>VILLS.includes(v)).length+' / '+VILLS.length,'積水里數 / 全部')}${kp(num(SIM.totExp)+' 人','受影響人口（加權）')}${kp(P.need+' 台','需要抽水機')}${kp(S.pumps+' 台','可調度抽水機')}${kp(P.start!=null?fmtT(P.start):'—','最早積水')}${kp(P.peak!=null?fmtT(P.peak):'—','最嚴重時刻')}${kp(pr.dep+' 台','現場已佈設')}${kp(pr.active+' 處','已處置地點')}</div>
 <h2>一、各里預估最大積水分布</h2>
@@ -3705,9 +3731,9 @@ $$('[data-rpt]').forEach(b=>b.addEventListener('click',e=>rptSave(e.currentTarge
 // ===================== v8：各里警戒雨量（反推積水 10／30／50 cm 所需時雨量） =====================
 const THR={key:'',v:null};
 function thresholds(){
-  const key=[S.off,S.tideAmp,S.tideLag,S.dev,S.stage,CAL.cap,CAL.pond].join();
+  const key=[S.off,S.tideAmp,S.tideLag,S.dev,S.stage,S.alt||'',CAL.cap,CAL.pond].join();
   if(THR.key===key&&THR.v) return THR.v;
-  const base={tp:4,D:3,bg:0,off:S.off,tideAmp:S.tideAmp,tideLag:S.tideLag,dev:S.dev,stage:S.stage};
+  const base={tp:4,D:3,bg:0,off:S.off,tideAmp:S.tideAmp,tideLag:S.tideLag,dev:S.dev,stage:S.stage,altMods:S.altMods};
   const depthAt=(t,P)=>{ const sc=Object.assign({},base,{P}); return simTrunk(t,sc,rainSeries(sc),0).maxD; };
   const solve=(t,lim)=>{ if(depthAt(t,200)<lim) return null; let lo=0,hi=200; if(depthAt(t,lo)>=lim) return 0; for(let k=0;k<14;k++){ const m=(lo+hi)/2; if(depthAt(t,m)>=lim) hi=m; else lo=m; } return hi; };
   const byV={}; TRUNKS.forEach(t=>{ const r=[10,30,50].map(l=>solve(t,l)); const o=byV[t.v]; if(!o) byV[t.v]={v:t.v,ts:[t.id],r}; else { o.ts.push(t.id); o.r=o.r.map((x,i)=>x==null?r[i]:r[i]==null?x:Math.min(x,r[i])); } });
@@ -3775,13 +3801,117 @@ function typhoons(){ const tc=LIVE.warn&&LIVE.warn.typhoon&&LIVE.warn.typhoon.Tr
   return arr.map(t=>{ const fx=((t.AnalysisData&&t.AnalysisData.Fix)||[]).slice(-1)[0]||{}; const lon=parseFloat(fx.CoordinateLongitude), lat=parseFloat(fx.CoordinateLatitude);
     return {name:t.CwaTyphoonName||t.TyphoonName||'熱帶性低氣壓',en:t.TyphoonName||'',at:fx.DateTime||'',km:Number.isFinite(lon)&&Number.isFinite(lat)?distKm([120.52,24.2],[lon,lat]):null}; }); }
 // 即時模式：滿潮時刻改用氣象署預報（振幅仍用模型設定）
-const _startLiveT=startLive; startLive=async function(){ await _startLiveT(); const e=LIVE_T0&&nextHigh(LIVE_T0.getTime()); if(!e) return; let lag=(e.t-LIVE_T0.getTime())/3600e3-S.tp; lag=((lag+6.21)%12.42+12.42)%12.42-6.21; S.tideLag=Math.round(lag*2)/2; syncCtl(); run(false); };
+const _startLiveT=startLive; startLive=async function(){ await _startLiveT(); if(S.preset!=='live') return; const e=LIVE_T0&&nextHigh(LIVE_T0.getTime()); if(!e) return; let lag=(e.t-LIVE_T0.getTime())/3600e3-S.tp; lag=((lag+6.21)%12.42+12.42)%12.42-6.21; S.tideLag=Math.round(lag*2)/2; syncCtl(); run(false); };
 // 即時資料面板、白話判讀
 const _renderLiveT=renderLive; renderLive=function(){ _renderLiveT(); const k=$('#nowK'); if(!k) return; const e=nextHigh(Date.now()), ty=typhoons().filter(t=>t.km!=null).sort((a,b)=>a.km-b.km)[0], w=activeWarns();
   if(e) k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v">${hm(e.t)}<span style="font-size:13px"> ${e.h!=null?'+'+e.h.toFixed(2)+' m':''}</span></div><div class="l">下一次滿潮（${md(e.t)}，${esc(e.name)}${e.range?'，'+esc(e.range)+'潮':''}）</div></div>`);
   k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v ${w.length?'badc':'okc'}">${w.length?esc(w[0].headline):'無'}</div><div class="l">臺中市有效的豪大雨特報${w.length>1?`（共 ${w.length} 則）`:''}</div></div>`);
   if(ty) k.insertAdjacentHTML('beforeend',`<div class="kpi"><div class="v ${ty.km<800?'badc':''}">${esc(ty.name)}</div><div class="l">颱風最新位置距龍井約 ${Math.round(ty.km).toLocaleString()} 公里</div></div>`); };
 const _drawPlainT=drawPlain; drawPlain=function(){ _drawPlainT(); if(ROLE==='citizen'||!S.live) return; const t=tideText(), w=activeWarns(); if(t||w.length) $('#plain').insertAdjacentHTML('beforeend',`<p>${w.length?`<b style="color:var(--warn)">${esc(w[0].headline)}</b>（中央氣象署）。`:''}${t}${t?'。':''}</p>`); };
+
+
+// ===================== v8：自訂改善方案（報告一、二、三期不動，本團隊方案接在後面比較） =====================
+let ALTS=[]; try{ ALTS=JSON.parse(store.get('lj_alts')||'[]')||[]; if(!Array.isArray(ALTS)) ALTS=[]; }catch(e){ ALTS=[]; }
+const STAGE_CUM=[0,29716.50,62565.15,89033.10]; // 報告摘表-4 累計經費（萬元）
+const BASE_NAME=['現況','一期完成','二期完成','全部完成'];
+function saveAlts(){ store.set('lj_alts',JSON.stringify(ALTS)); }
+// 曼寧公式滿流排水能力（n=0.013）：圓管直徑 d，或箱涵寬 w × 高 h（公尺）；坡度以 ‰ 輸入
+function manning(m){ const n=0.013, S0=(+m.slope>0?+m.slope:1)/1000; let A=0,R=0;
+  if(m.shape==='circle'&&+m.d>0){ const d=+m.d; A=Math.PI*d*d/4; R=d/4; }
+  else if(m.shape==='box'&&+m.w>0&&+m.h>0){ const w=+m.w,h=+m.h; A=w*h; R=w*h/(2*(w+h)); }
+  else return 0; return A*Math.pow(R,2/3)*Math.sqrt(S0)/n; }
+function q5of(t,A){ const r=rainSeries({P:74.51,D:3,bg:0,tp:4}); return Math.max(...routed(Object.assign({},t,{A:A>0?A:t.A}),r,t.C,1)); }
+function resolveAlt(a){ const mods={}; (a.rows||[]).forEach(r=>{ const t=TBY[r.tr]; if(!t) return; const m=mods[t.id]||{};
+  if(+r.A>0) m.A=+r.A; const c=manning(r); if(c>0) m.cap=c; if(r.pump!==''&&r.pump!=null&&Number.isFinite(+r.pump)) m.pump=+r.pump; if(+r.det>0) m.det=+r.det; mods[t.id]=m; }); return mods; }
+function altCost(a){ return STAGE_CUM[a.base|0]+(a.rows||[]).reduce((s,r)=>s+(Number.isFinite(+r.cost)?+r.cost:0),0); }
+function stageName(){ const a=S.alt&&ALTS.find(x=>x.id===S.alt); return a? `自訂方案「${a.name}」（以報告${BASE_NAME[a.base|0]}為基礎）` : '報告'+BASE_NAME[S.stage|0]; }
+function setAlt(id){ const a=id&&ALTS.find(x=>x.id===id); if(a){ S.alt=a.id; S.altMods=resolveAlt(a); S.stage=a.base|0; } else { S.alt=null; S.altMods=null; } syncCtl(); run(false); }
+// 情境面板的「改善工程做到哪」：報告四個階段後面接自訂方案
+function renderStageAlts(){ const seg=$('#stageSeg'); if(!seg) return; seg.querySelectorAll('[data-alt]').forEach(b=>b.remove());
+  ALTS.forEach(a=>{ const b=document.createElement('button'); b.type='button'; b.dataset.alt=a.id; b.textContent=a.name; b.title='自訂方案（非報告內容）'; b.addEventListener('click',()=>setAlt(a.id)); seg.appendChild(b); });
+  seg.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.alt? b.dataset.alt===S.alt : (!S.alt&&+b.dataset.v===S.stage)))); }
+$('#stageSeg').addEventListener('click',e=>{ if(e.target.closest('button[data-v]')){ S.alt=null; S.altMods=null; } },true);
+const _syncCtlA=syncCtl; syncCtl=function(){ _syncCtlA(); renderStageAlts(); };
+// 方案若被刪改，重新套用
+function refreshAltApplied(){ if(S.alt){ const a=ALTS.find(x=>x.id===S.alt); if(a){ S.altMods=resolveAlt(a); S.stage=a.base|0; } else { S.alt=null; S.altMods=null; } } }
+
+// ---------- 分期頁：報告四階段＋自訂方案一起比 ----------
+renderPhase=function(){
+  if(!SIM) return;
+  const cols=STAGES.map((st,k)=>({n:st.n,stage:k,mods:null,alt:null})).concat(ALTS.map(a=>({n:a.name,stage:a.base|0,mods:resolveAlt(a),alt:a})));
+  const rs=[74.51,88.03].map(P=>cols.map(c=>simulate({...S,P,D:3,bg:0,stage:c.stage,altMods:c.mods},null)));
+  const mx=Math.max(...rs.flat().map(s=>s.totExp))*1.1||1;
+  const N=cols.length, w=Math.max(560,120+N*104), h=250, pl=50, pt=24, pb=40, iw=w-pl-12, ih=h-pt-pb, gw=iw/N;
+  let s=`<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="各期與自訂方案的受影響人口">`;
+  for(let k=0;k<=4;k++){const v=mx*k/4,y=pt+ih*(1-k/4);s+=`<line x1="${pl}" x2="${w-12}" y1="${y}" y2="${y}" style="stroke:var(--line)"/><text x="${pl-5}" y="${y+3}" text-anchor="end">${Math.round(v).toLocaleString()}</text>`;}
+  if(ALTS.length){ const x0=pl+gw*STAGES.length; s+=`<line x1="${x0}" x2="${x0}" y1="${pt}" y2="${pt+ih}" style="stroke:var(--line2)" stroke-dasharray="4 3"/><text x="${x0+6}" y="${pt+10}" style="fill:var(--accent)">自訂方案 →</text>`; }
+  cols.forEach((c,k)=>{ [0,1].forEach(j=>{ const v=rs[j][k].totExp, bh=ih*v/mx, x=pl+gw*k+gw*0.18+j*gw*0.32; const col=c.alt?(j?'var(--watch)':'var(--warn)'):(j?'var(--deep)':'var(--accent)'); s+=`<rect x="${x}" y="${pt+ih-bh}" width="${gw*0.3}" height="${bh}" rx="2" style="fill:${col}"/><text x="${x+gw*0.15}" y="${pt+ih-bh-4}" text-anchor="middle" style="fill:var(--ink)">${Math.round(v).toLocaleString()}</text>`; });
+    s+=`<text x="${pl+gw*k+gw/2}" y="${h-22}" text-anchor="middle" style="fill:var(--ink);font-size:11px;font-family:var(--f-body)">${esc(c.n.length>7?c.n.slice(0,7)+'…':c.n)}</text>${c.alt?`<text x="${pl+gw*k+gw/2}" y="${h-8}" text-anchor="middle" style="font-size:9.5px">以${BASE_NAME[c.stage]}為基礎</text>`:''}`; });
+  s+=`<rect x="${pl+6}" y="6" width="10" height="10" style="fill:var(--accent)"/><text x="${pl+20}" y="15" style="fill:var(--ink)">5 年</text><rect x="${pl+66}" y="6" width="10" height="10" style="fill:var(--deep)"/><text x="${pl+80}" y="15" style="fill:var(--ink)">10 年</text>${ALTS.length?`<rect x="${pl+130}" y="6" width="10" height="10" style="fill:var(--warn)"/><text x="${pl+144}" y="15" style="fill:var(--ink)">自訂方案 5 年／10 年</text>`:''}<text x="${w-12}" y="15" text-anchor="end">受影響人口（加權）</text>`;
+  $('#phChart').innerHTML=s+'</svg>';
+  $('#phTable').innerHTML=`<tr><th>階段</th><th style="text-align:right">該期經費(萬元)</th><th style="text-align:right">保護人口</th><th style="text-align:right">5 年受影響</th><th style="text-align:right">該期減少</th><th style="text-align:right">每億元減少</th></tr>`+
+   STAGES.map((st,k)=>{ const e=rs[0][k].totExp, prev=k?rs[0][k-1].totExp:e, red=prev-e;
+     return `<tr><td>${st.n}</td><td class="n">${st.cost?st.cost.toLocaleString(undefined,{minimumFractionDigits:2}):'–'}</td><td class="n">${st.pop?st.pop.toLocaleString():'–'}</td><td class="n">${Math.round(e).toLocaleString()}</td><td class="n">${k?Math.round(red).toLocaleString():'–'}</td><td class="n">${k&&st.cost?Math.round(red/st.cost*10000).toLocaleString()+' 人':'–'}</td></tr>`; }).join('')+
+   `<tr><td><b>合計</b></td><td class="n"><b>89,033.10</b></td><td class="n">33,198</td><td colspan="3"></td></tr>`;
+  const cmp=$('#altCmp'); if(cmp){ const e0=rs[0][0].totExp, e3=rs[0][3].totExp, t3=rs[1][3].totExp;
+    cmp.innerHTML= ALTS.length? `<div class="tscroll"><table><tr><th>方案</th><th style="text-align:right">總經費(萬元)</th><th style="text-align:right">5 年受影響</th><th style="text-align:right">10 年受影響</th><th style="text-align:right">比報告全部完成（5 年）</th><th style="text-align:right">經費差</th><th style="text-align:right">每億元減少</th></tr>`+
+      `<tr class="muted"><td>報告全部完成</td><td class="n">89,033.10</td><td class="n">${Math.round(e3).toLocaleString()}</td><td class="n">${Math.round(t3).toLocaleString()}</td><td class="n">基準</td><td class="n">基準</td><td class="n">${Math.round((e0-e3)/89033.10*10000).toLocaleString()} 人</td></tr>`+
+      ALTS.map((a,i)=>{ const k=STAGES.length+i, e=rs[0][k].totExp, t=rs[1][k].totExp, c=altCost(a), d=e-e3, dc=c-89033.10;
+        return `<tr><td><b>${esc(a.name)}</b><br><span class="muted" style="font-size:11px">以${BASE_NAME[a.base|0]}為基礎，調整 ${(a.rows||[]).length} 處</span></td><td class="n">${c.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</td><td class="n">${Math.round(e).toLocaleString()}</td><td class="n">${Math.round(t).toLocaleString()}</td><td class="n ${d<0?'okc':d>0?'badc':''}">${d<0?'少 ':d>0?'多 ':''}${Math.abs(Math.round(d)).toLocaleString()} 人</td><td class="n ${dc>0?'badc':dc<0?'okc':''}">${dc>0?'+':''}${Math.round(dc).toLocaleString()}</td><td class="n">${c>0?Math.round((e0-e)/c*10000).toLocaleString()+' 人':'–'}</td></tr>`; }).join('')+`</table></div><p class="muted" style="font-size:11.5px;margin:6px 0 0">「比報告全部完成」為負（綠色）＝本方案受影響人口更少。經費＝報告基礎階段累計經費＋方案各處經費增減。試算沿用預報分頁的外水、潮位與土地利用設定。</p>`
+      : '<p class="muted" style="font-size:12.5px;margin:0">還沒有自訂方案。承辦人員可在下方「自訂改善方案」新增。</p>'; }
+  const fin=rs[0][3].res, left=TRUNKS.filter(t=>fin[t.id].maxD>=10).sort((a,b)=>fin[b.id].maxD-fin[a.id].maxD);
+  $('#phResid').innerHTML= left.length? `<p>在目前外水與潮位條件下，報告全部完成後 5 年重現期降雨仍會積水：</p><ul>${left.map(t=>`<li><b>${esc(t.v)}｜${esc(t.id)}幹線</b> 約 ${num(fin[t.id].maxD)} cm：${t.ph.length?'改善後仍受外水頂托，建議搭配移動式抽水機預佈':'規劃未列改善工程，出口受'+esc(t.rv)+'外水頂托，建議納入預警與抽水機調度'}。</li>`).join('')}</ul><p class="muted">這是工程之外，需要預報與調度系統補位的地方，也是自訂方案可以著力的地方。</p>`
+   : '<p>在目前條件下，全部工程完成後 5 年重現期降雨已無明顯積水。可以到預報分頁把外水位或潮位調高，看極端情境的殘餘風險。</p>';
+  renderAltList();
+};
+
+// ---------- 方案清單與編輯器 ----------
+let ALTEDIT=null; // 編輯中的方案（複本）
+const canEditAlt=()=>ROLE==='staff'||(typeof DEMO!=='undefined'&&DEMO.on);
+function renderAltList(){ const box=$('#altList'); if(!box) return;
+  box.innerHTML= ALTS.length? ALTS.map(a=>`<div class="alt-item"><div><b>${esc(a.name)}</b>${S.alt===a.id?' <span class="pill l0">套用中</span>':''}<div class="muted" style="font-size:12px">以報告${BASE_NAME[a.base|0]}為基礎｜調整 ${(a.rows||[]).map(r=>esc(r.tr)+'幹線').join('、')||'（尚未調整）'}｜總經費 ${altCost(a).toLocaleString(undefined,{maximumFractionDigits:2})} 萬元</div>${a.note?`<div style="font-size:12.5px;margin-top:2px">${esc(a.note)}</div>`:''}</div><div class="acts"><button class="btn sm" type="button" data-alt-apply="${esc(a.id)}">${S.alt===a.id?'取消套用':'套用到預報'}</button>${canEditAlt()?`<button class="btn sm ghost" type="button" data-alt-edit="${esc(a.id)}">編輯</button><button class="btn sm ghost" type="button" data-alt-del="${esc(a.id)}">刪除</button>`:''}</div></div>`).join('')
+    : '<p class="muted" style="font-size:12.5px;margin:0">目前沒有自訂方案。</p>';
+  box.querySelectorAll('[data-alt-apply]').forEach(b=>b.addEventListener('click',()=>{ setAlt(S.alt===b.dataset.altApply?null:b.dataset.altApply); }));
+  box.querySelectorAll('[data-alt-edit]').forEach(b=>b.addEventListener('click',()=>{ const a=ALTS.find(x=>x.id===b.dataset.altEdit); if(a){ ALTEDIT=JSON.parse(JSON.stringify(a)); renderAltEdit(); } }));
+  box.querySelectorAll('[data-alt-del]').forEach(b=>b.addEventListener('click',()=>{ if(b.dataset.arm!=='1'){ b.dataset.arm='1'; b.textContent='再按一次確認刪除'; setTimeout(()=>{ b.dataset.arm=''; b.textContent='刪除'; },3000); return; } ALTS=ALTS.filter(x=>x.id!==b.dataset.altDel); saveAlts(); refreshAltApplied(); syncCtl(); run(false); }));
+  ['#altNew','#altExport','#altImportLab'].forEach(s=>{ const e=$(s); if(e) e.hidden=!canEditAlt(); });
+}
+function trunkOpts(sel){ return TRUNKS.slice().sort((a,b)=>a.v.localeCompare(b.v,'zh-Hant')).map(t=>`<option value="${esc(t.id)}"${t.id===sel?' selected':''}>${esc(t.id)} 幹線（${esc(t.v)}）</option>`).join(''); }
+function rowHint(r){ const t=TBY[r.tr]; if(!t) return ''; if(!Q5REF) calcRef(); const now=Q5REF[t.id]*capRatio0(t), rep=Q5REF[t.id]*Math.max(capRatio0(t),1.25), c=manning(r), q5=q5of(t,+r.A);
+  return `排水能力（模型推估）：現況約 ${num(now,2)} cms、照報告改善後約 ${num(rep,2)} cms｜5 年洪峰約 ${num(q5,2)} cms（集水 ${num(+r.A>0?+r.A:t.A,1)} ha）${c>0?`｜<b>本方案斷面 ${num(c,2)} cms，為 5 年洪峰的 ${num(c/q5*100)}%</b>`:''}${t.co?'｜出口受潮位影響，斷面加大受限於外水':''}`; }
+function renderAltEdit(){ const box=$('#altEdit'); if(!box) return; const a=ALTEDIT; if(!a){ box.hidden=true; box.innerHTML=''; return; } box.hidden=false;
+  box.innerHTML=`<div class="field"><label for="altName">方案名稱</label><input type="text" id="altName" maxlength="20" value="${esc(a.name||'')}" placeholder="例如：方案 A 忠山井合併抽水站"></div>
+   <div class="field"><label for="altBase">以哪個報告階段為基礎</label><select id="altBase">${BASE_NAME.map((n,k)=>`<option value="${k}"${(a.base|0)===k?' selected':''}>報告${n}（累計 ${STAGE_CUM[k].toLocaleString()} 萬元）</option>`).join('')}</select><small>沒有調整的幹線，照這個報告階段計算。</small></div>
+   <div class="field"><label for="altNote">方案說明（給機關看的一句話）</label><input type="text" id="altNote" maxlength="80" value="${esc(a.note||'')}" placeholder="例如：忠、山幹線改接同一座 6 cms 抽水站，省一座抽水站用地"></div>
+   <div class="lab" style="font-size:12.5px;margin:8px 0 6px">調整的幹線（留空＝沿用基礎階段）</div>
+   <div id="altRows">${(a.rows||[]).map((r,i)=>`<div class="alt-row" data-i="${i}">
+     <div class="alt-g"><label>幹線<select data-k="tr">${trunkOpts(r.tr)}</select></label><label>集水面積 ha<input type="number" data-k="A" min="0" step="0.1" value="${esc(r.A??'')}" placeholder="${esc((TBY[r.tr]||{}).A??'')}"></label>
+     <label>斷面<select data-k="shape"><option value="">沿用</option><option value="circle"${r.shape==='circle'?' selected':''}>圓管</option><option value="box"${r.shape==='box'?' selected':''}>箱涵</option></select></label>
+     ${r.shape==='circle'?`<label>直徑 m<input type="number" data-k="d" min="0" step="0.05" value="${esc(r.d??'')}"></label>`:''}${r.shape==='box'?`<label>寬 m<input type="number" data-k="w" min="0" step="0.1" value="${esc(r.w??'')}"></label><label>高 m<input type="number" data-k="h" min="0" step="0.1" value="${esc(r.h??'')}"></label>`:''}${r.shape?`<label>坡度 ‰<input type="number" data-k="slope" min="0.1" step="0.1" value="${esc(r.slope??1)}"></label>`:''}
+     <label>抽水站 cms<input type="number" data-k="pump" min="0" step="0.5" value="${esc(r.pump??'')}" placeholder="沿用"></label><label>滯洪量 m³<input type="number" data-k="det" min="0" step="500" value="${esc(r.det??'')}"></label><label>經費增減 萬元<input type="number" data-k="cost" step="10" value="${esc(r.cost??'')}" placeholder="相對報告"></label></div>
+     <label class="alt-note">路線、工法說明<input type="text" data-k="note" maxlength="80" value="${esc(r.note||'')}" placeholder="例如：改沿中央路二段 200 巷，分洪 8 ha 到山幹線"></label>
+     <div class="muted alt-hint">${rowHint(r)}</div><button class="btn sm ghost" type="button" data-rm="${i}">移除這一處</button></div>`).join('')}</div>
+   <div class="acts" style="margin-top:8px"><button class="btn sm ghost" type="button" id="altAddRow">＋ 新增一處調整</button></div>
+   <div class="acts" style="margin-top:12px"><button class="btn" type="button" id="altSave">儲存並套用</button><button class="btn ghost" type="button" id="altCancel">取消</button></div>
+   <div id="altMsg" style="font-size:12.5px;margin-top:6px"></div>
+   <p class="muted" style="font-size:11.5px;margin:8px 0 0">斷面以曼寧公式滿流估算（n＝0.013），坡度預設 1‰；外水頂托時排水能力會再打折，所以沿海幹線只加大管徑效果有限，要配抽水站。分洪改接：把來源幹線的集水面積調小、承接幹線調大。這是概念比較，正式設計仍需 SWMM 重新檢核。</p>`;
+  const rd=()=>{ a.name=$('#altName').value.trim(); a.base=+$('#altBase').value; a.note=$('#altNote').value.trim(); box.querySelectorAll('.alt-row').forEach(row=>{ const r=a.rows[+row.dataset.i]; row.querySelectorAll('[data-k]').forEach(el=>{ r[el.dataset.k]=el.value; }); }); };
+  box.querySelectorAll('.alt-row [data-k]').forEach(el=>el.addEventListener('change',()=>{ rd(); renderAltEdit(); }));
+  box.querySelectorAll('[data-rm]').forEach(b=>b.addEventListener('click',()=>{ rd(); a.rows.splice(+b.dataset.rm,1); renderAltEdit(); }));
+  $('#altAddRow').addEventListener('click',()=>{ rd(); a.rows=a.rows||[]; a.rows.push({tr:(a.rows.length?a.rows[a.rows.length-1].tr:'忠'),slope:1}); renderAltEdit(); });
+  $('#altCancel').addEventListener('click',()=>{ ALTEDIT=null; renderAltEdit(); });
+  $('#altSave').addEventListener('click',()=>{ rd(); if(!a.name){ $('#altMsg').innerHTML='<span class="badc">請填方案名稱。</span>'; return; } if(ALTS.some(x=>x.name===a.name&&x.id!==a.id)){ $('#altMsg').innerHTML='<span class="badc">已有同名方案。</span>'; return; }
+    const bad=(a.rows||[]).find(r=>['A','d','w','h','slope','pump','det'].some(k=>r[k]!==''&&r[k]!=null&&!(+r[k]>=0)));
+    if(bad){ $('#altMsg').innerHTML='<span class="badc">數字欄位不能是負數。</span>'; return; }
+    const i=ALTS.findIndex(x=>x.id===a.id); if(i>=0) ALTS[i]=a; else ALTS.push(a); saveAlts(); ALTEDIT=null; renderAltEdit(); setAlt(a.id); });
+}
+$('#altNew').addEventListener('click',()=>{ ALTEDIT={id:'alt'+Date.now().toString(36),name:'方案 '+String.fromCharCode(65+ALTS.length%26),base:3,note:'',rows:[{tr:'忠',slope:1}]}; renderAltEdit(); const e=$('#altEdit'); if(e) e.scrollIntoView({block:'nearest'}); });
+$('#altExport').addEventListener('click',e=>{ if(!ALTS.length) return; saveFile(e.currentTarget,`龍井_自訂改善方案_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`,JSON.stringify({kind:'longjing-alts',v:1,at:new Date().toISOString(),alts:ALTS},null,1),'application/json'); });
+$('#altImport').addEventListener('change',e=>{ const f=e.target.files&&e.target.files[0]; if(!f) return; const rd=new FileReader(); rd.onload=()=>{ try{ const j=JSON.parse(String(rd.result)); const list=Array.isArray(j)?j:j.alts; if(!Array.isArray(list)) throw new Error('不是方案檔');
+    let n=0; list.forEach(a=>{ if(!a||!a.name||!Array.isArray(a.rows)) return; const c={id:'alt'+Date.now().toString(36)+n,name:String(a.name).slice(0,20),base:Math.max(0,Math.min(3,a.base|0)),note:String(a.note||'').slice(0,80),rows:a.rows.filter(r=>r&&TBY[r.tr]).slice(0,30)}; while(ALTS.some(x=>x.name===c.name)) c.name=c.name.slice(0,17)+'（匯入）'; ALTS.push(c); n++; });
+    saveAlts(); syncCtl(); renderPhase(); $('#altImpMsg').innerHTML=`<span class="okc">已匯入 ${n} 個方案。</span>`; }catch(err){ $('#altImpMsg').innerHTML=`<span class="badc">讀不懂這個檔案：${esc(err.message)}</span>`; } e.target.value=''; }; rd.readAsText(f); });
+const _applyRoleA=applyRole; applyRole=function(r){ _applyRoleA(r); if(typeof renderAltList==='function') renderAltList(); };
+refreshAltApplied();
 
 })();
 </script>
