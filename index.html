@@ -795,6 +795,9 @@ a{color:var(--accent)}
 .leaflet-tooltip.tlab:before,.leaflet-tooltip.slab:before{display:none}
 .leaflet-tooltip.vlab{background:transparent;border:0;box-shadow:none;color:rgba(232,238,252,.78);font-size:11px;letter-spacing:.2em;text-shadow:0 0 6px #000}
 .leaflet-tooltip.vlab:before{display:none}
+.vlab.on{color:#fff;font-weight:700;font-size:13px;letter-spacing:.12em;background:rgba(5,10,20,.72);border:1.5px solid rgb(110,200,255);border-radius:6px;padding:1px 7px;text-shadow:none;opacity:1!important}
+.vsel-line{animation:vselDash 1.4s linear infinite}
+@keyframes vselDash{to{stroke-dashoffset:-24}}
 .leaflet-tooltip.glab{background:transparent;border:0;box-shadow:none;color:var(--faint);font-size:11px;letter-spacing:.42em}
 .leaflet-tooltip.glab:before{display:none}
 .leaflet-tooltip.mhlab{background:transparent;border:0;box-shadow:none;color:rgba(110,200,255,.85);font-family:var(--mono);font-size:9.5px;padding:0;text-shadow:0 0 4px #000}
@@ -996,6 +999,7 @@ td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;
 :root[data-theme="light"] .mix-value.warm,:root[data-theme="light"] .mix-value.cool{text-shadow:none}
 :root[data-theme="light"] .plain b{color:var(--ink)}
 :root[data-theme="light"] .leaflet-tooltip.vlab{color:rgba(16,35,47,.8);text-shadow:0 0 3px #fff,0 0 3px #fff}
+:root[data-theme="light"] .vlab.on{color:#fff;background:rgba(11,40,60,.85);border-color:#0b7aa1;text-shadow:none}
 :root[data-theme="light"] .leaflet-tooltip.mhlab{color:#0b7aa1;text-shadow:0 0 3px #fff}
 :root[data-theme="light"] .filters button[aria-pressed="true"],:root[data-theme="light"] .toolbar button[aria-selected="true"]{background:rgba(11,122,161,.1)}
 :root[data-theme="light"] .smk{text-shadow:0 0 2px #fff,0 0 2px #fff}
@@ -2105,14 +2109,38 @@ function baseMsg(){
   $('#baseMsg').innerHTML= tileOK? '底圖　國土測繪中心電子地圖（暗色）'
     : (tileErr>=6? '<b>底圖未載入</b>　此環境封鎖外部圖磚，改用村里界；下載 HTML 用瀏覽器開即可看到電子地圖':'底圖載入中…');
 }
-function selectTrunk(id,fromVillage){ S.sel=id; drawTime(); drawList(); showTab('detail'); }
-function showVillageOnly(v){ showTab('detail'); $('#detail').innerHTML=`<h2>${esc(v)}</h2><p class="muted">本里沒有規劃中的雨水下水道幹線出口，預報以相鄰幹線為準。</p>`; }
+function selectTrunk(id,fromVillage){ S.sel=id; S.selV=null; drawTime(); drawList(); showTab('detail'); }
+function showVillageOnly(v){ S.selV=v; drawMap(); showTab('detail'); $('#detail').innerHTML=`<h2>${esc(v)}</h2><p class="muted">本里沒有規劃中的雨水下水道幹線出口，預報以相鄰幹線為準。</p>`; }
+// 選取的里：獨立圖層畫粗外框（外圈白色光暈＋流動虛線），名稱標籤反白；不改填色，淹水等級顏色照常可讀
+let SELV_LAYER=null, SELV_KEY='';
+function selVills(){ if(S.selV&&VL[S.selV]) return [S.selV]; return S.sel?VILLS.filter(v=>(TBV[v]||[]).some(t=>t.id===S.sel)):[]; }
+function drawSelVill(){ if(!MAP||!L||!VLAYER) return; const vs=selVills(), light=document.documentElement.dataset.theme==='light', key=vs.join()+'|'+light+'|'+css('--accent');
+  if(key===SELV_KEY) return; SELV_KEY=key;
+  if(!MAP.getPane('vsel')){ const p=MAP.createPane('vsel'); p.style.zIndex=450; p.style.pointerEvents='none'; }
+  if(SELV_LAYER){ SELV_LAYER.remove(); SELV_LAYER=null; }
+  VILLS.forEach(v=>{ const tt=VL[v]&&VL[v].getTooltip&&VL[v].getTooltip(), el=tt&&tt.getElement&&tt.getElement(); if(el) el.classList.toggle('on',vs.includes(v)); });
+  if(!vs.length) return; SELV_LAYER=L.layerGroup();
+  vs.forEach(v=>{ const f=VL[v].feature; if(!f) return;
+    L.geoJSON(f,{pane:'vsel',interactive:false,style:{color:light?'#ffffff':css('--accent'),weight:8,opacity:light?.9:.55,fill:false,lineJoin:'round'}}).addTo(SELV_LAYER);
+    L.geoJSON(f,{pane:'vsel',interactive:false,style:{color:light?'#0b7aa1':'#ffffff',weight:3.5,opacity:1,fill:false,dashArray:'10 6',className:'vsel-line',lineJoin:'round'}}).addTo(SELV_LAYER); });
+  SELV_LAYER.addTo(MAP);
+  const names=vs.join(); if(names!==SELV_PANNED){ const first=SELV_PANNED===null; SELV_PANNED=names; if(!first) setTimeout(()=>panToVills(vs),80); } }
+let SELV_PANNED=null;
+// 選取的里被面板蓋住時，把地圖移到看得到的地方（只在換選取時移一次）
+function panToVills(vs){ if(!MAP||!vs.length) return; let b=null; vs.forEach(v=>{ const g=VL[v]&&VL[v].getBounds(); if(g) b=b?b.extend(g):L.latLngBounds(g.getSouthWest(),g.getNorthEast()); }); if(!b) return;
+  const W=window.innerWidth, H=window.innerHeight, pn=$('#panel'), r=pn&&pn.offsetWidth&&getComputedStyle(pn).display!=='none'?pn.getBoundingClientRect():null;
+  let pr=40, pb=170, pt=90; if(r&&r.width>0&&r.left<W-20&&r.top<H-20){ if(r.left>W*0.35) pr=W-r.left+24; else if(r.top>H*0.3) pb=H-r.top+24; }
+  const pbx=$('#plainBox'), br=pbx&&pbx.offsetWidth?pbx.getBoundingClientRect():null; const pl=br&&br.right<W*0.5&&br.bottom>br.top+40?br.right+16:20; if(W-pr-pl<160||H-pb-pt<120) return;
+  const p1=MAP.latLngToContainerPoint(b.getNorthWest()), p2=MAP.latLngToContainerPoint(b.getSouthEast());
+  if(p1.x>=pl&&p2.x<=W-pr&&p1.y>=pt&&p2.y<=H-pb) return; // 已整個看得到
+  MAP.panBy([(p1.x+p2.x)/2-(pl+W-pr)/2,(p1.y+p2.y)/2-(pt+H-pb)/2]); }
 function drawMap(){
   if(!MAP||!SIM) return;
   const i=S.t;
   VILLS.forEach(v=>{ const ts=TBV[v]||[]; const d=ts.length?Math.max(...ts.map(t=>SIM.res[t.id].depth[i])):0; const lv=level(d);
     VL[v].setStyle({fillColor:css(['--ok','--watch','--warn','--crit'][lv]),fillOpacity: ts.length? (lv?0.42:0.07):0.03, color: lv?css(['--ok','--watch','--warn','--crit'][lv]):css('--vline'), weight: ts.some(t=>t.id===S.sel)?2.6:(lv?1.6:0.9), opacity: lv?0.9:0.6});
   });
+  drawSelVill();
   TRUNKS.forEach(t=>{ const d=SIM.res[t.id].depth[i], lv=level(d), m=MK[t.id];
     m.setStyle({fillColor:css(['--ok','--watch','--warn','--crit'][lv]),color:t.id===S.sel?'#ffffff':'#03050a',weight:t.id===S.sel?3:2});
     const a=ALLOC?ALLOC[t.id]:0;
@@ -3238,8 +3266,16 @@ $('#czSend').addEventListener('click',()=>{
   try{ saveReports(); }catch(e){}
   CZPHOTO=null; CZD=0; CZPICK=null; $('#czPhoto').value=''; $('#czPrev').innerHTML=''; $('#czPickTxt').textContent=''; $$('#czDepth button').forEach(b=>b.setAttribute('aria-pressed','false'));
   drawCitizenMarks(); if(isOpen('report')) renderReport(); if(isOpen('admin')) renderAdmin(); renderMine();
-  $('#czMsg').innerHTML=`<span class="okc">謝謝！已送出「${esc(v)} 積水約 ${r.d} 公分」。里長或區公所確認後會出現在地圖上，並納入處理。可在下方「我的回報」看進度。</span>`;
+  $('#czMsg').innerHTML=`<span class="okc">謝謝！已送出「${esc(v)} 積水約 ${r.d} 公分」。里長或區公所確認後會出現在地圖上，並納入處理。可在下方「我的回報」看進度。</span> <button class="btn sm ghost" type="button" data-czcancel="${esc(r.id)}">送錯了？取消這筆回報</button>`;
 });
+// 民眾取消自己的回報（誤觸）：只限本裝置、尚未審核；中繼站同步刪除回報與照片
+const CZC={zh:['取消','確定要取消這筆回報嗎？取消後里長與區公所就不會看到。','已取消這筆回報。'],en:['Cancel','Cancel this report? Officials will no longer see it.','Report cancelled.'],vi:['Hủy','Hủy báo cáo này? Cán bộ sẽ không thấy nữa.','Đã hủy báo cáo.'],id:['Batalkan','Batalkan laporan ini? Petugas tidak akan melihatnya lagi.','Laporan dibatalkan.']};
+function cancelCz(id){ const T=CZC[LANG]||CZC.zh, r=REPORTS.find(x=>x.id===id); if(!r||r.type!=='citizen'||r.dev!==DEVID||(r.st||'待審核')!=='待審核') return;
+  if(!confirm(T[1])) return;
+  REPORTS=REPORTS.filter(x=>x!==r); try{ saveReports(); }catch(e){} syncOp({k:'cz-cancel',id});
+  drawCitizenMarks(); if(isOpen('report')) renderReport(); if(isOpen('admin')) renderAdmin(); if(isOpen('chief')&&typeof renderChief==='function') renderChief(); renderMine();
+  $('#czMsg').innerHTML=`<span class="okc">${T[2]}</span>`; }
+document.addEventListener('click',e=>{ const b=e.target.closest&&e.target.closest('[data-czcancel]'); if(b){ e.preventDefault(); cancelCz(b.dataset.czcancel); } });
 function reviewCz(id,ok){ const r=REPORTS.find(x=>x.id===id); if(!r||(r.st||'待審核')!=='待審核') return; const via=ROLE==='chief'?'里長查核':'承辦審核'; r.via=via; r.rv=Date.now(); if(ok){ r.st='已確認'; if(!REPORTS.some(x=>x.id===r.id+'d')) REPORTS.push({id:r.id+'d',ts:Date.now(),i:r.i,tr:r.tr,type:'depth',n:0,d:r.d,note:(r.note||'')+'（民眾回報，經'+via+'）'}); } else r.st='已退回'; saveReports(); syncOp({k:'review',id,ok}); if(isOpen('chief')&&typeof renderChief==='function') renderChief(); run(false); drawCitizenMarks(); if(isOpen('report')) renderReport(); if(isOpen('admin')) renderAdmin(); }
 function czQueueHTML(){ const q=REPORTS.filter(r=>r.type==='citizen'&&(r.st||'待審核')==='待審核').sort((a,b)=>(b.cred||0)-(a.cred||0));
   if(!q.length) return '<p class="muted" style="font-size:12.5px;margin:0">目前沒有待審核的民眾回報。</p>';
@@ -3437,7 +3473,7 @@ function applyLangStatic(){
 $$('#czLang button').forEach(b=>b.addEventListener('click',()=>{ LANG=b.dataset.l; store.set('lj_lang',LANG); applyLangStatic(); renderCitizen(); }));
 function renderMine(){ const box=$('#czMine'); if(!box) return; const T=LANG==='zh'?null:I18N[LANG];
   const mine=REPORTS.filter(r=>r.type==='citizen'&&r.dev===DEVID).sort((a,b)=>b.ts-a.ts).slice(0,10);
-  box.innerHTML= mine.length? `<ul class="mine">${mine.map(r=>{ const st=r.st||'待審核'; const stT=T?T.mst[st]:st+(st==='已確認'&&r.via?'（'+r.via+'）':st==='待審核'?'（里長或區公所確認中）':''); return `<li>${new Date(r.ts).toLocaleString(LANG==='zh'?'zh-TW':LANG,{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}　${esc(r.note||r.tr)} ~${num(r.d)} cm　<b class="${st==='已確認'?'okc':st==='已退回'?'badc':''}">${esc(stT)}</b></li>`; }).join('')}</ul>`
+  box.innerHTML= mine.length? `<ul class="mine">${mine.map(r=>{ const st=r.st||'待審核'; const stT=T?T.mst[st]:st+(st==='已確認'&&r.via?'（'+r.via+'）':st==='待審核'?'（里長或區公所確認中）':''); return `<li>${new Date(r.ts).toLocaleString(LANG==='zh'?'zh-TW':LANG,{hour12:false,month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})}　${esc(r.note||r.tr)} ~${num(r.d)} cm　<b class="${st==='已確認'?'okc':st==='已退回'?'badc':''}">${esc(stT)}</b>${st==='待審核'?` <button class="btn sm ghost" type="button" data-czcancel="${esc(r.id)}">${(CZC[LANG]||CZC.zh)[0]}</button>`:''}</li>`; }).join('')}</ul>`
     : `<p class="muted" style="margin:0;font-size:13px">${T?T.mineNone:'你還沒有送出回報。送出後可以在這裡看處理進度。'}</p>`; }
 const _renderCitizen=renderCitizen;
 renderCitizen=function(){
